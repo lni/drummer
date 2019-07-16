@@ -134,6 +134,24 @@ GOTEST=$(GO) $(TEST_OPTIONS)
 test:
 	$(GOTEST) $(PKGNAME)
 
+test-slow-drummer: TESTTAGVALS+=$(DRUMMER_SLOW_TEST_BUILDTAGS)
+test-slow-drummer:
+	$(GOTEST) -o $(DRUMMER_MONKEY_TESTING_BIN) -c $(PKGNAME)/internal/drummer
+	./$(DRUMMER_MONKEY_TESTING_BIN) -test.v -test.timeout 9999s
+
+test-monkey-drummer: TESTTAGVALS+=$(DRUMMER_MONKEY_TEST_BUILDTAGS)
+test-monkey-drummer:
+	$(GOTEST) -o $(DRUMMER_MONKEY_TESTING_BIN) -c $(PKGNAME)/internal/drummer
+	./$(DRUMMER_MONKEY_TESTING_BIN) -test.v -test.timeout 9999s
+
+slow-drummer: TESTTAGVALS+=$(DRUMMER_SLOW_TEST_BUILDTAGS)
+slow-drummer:
+	$(GOTEST) $(BUILD_TEST_ONLY) $(PKGNAME)/internal/drummer
+
+monkey-drummer: TESTTAGVALS+=$(DRUMMER_MONKEY_TEST_BUILDTAGS)
+monkey-drummer:
+	$(GOTEST) $(BUILD_TEST_ONLY) $(PKGNAME)/internal/drummer
+
 clean:
 	rm -f $(DRUMMER_MONKEY_TESTING_BIN) $(PORCUPINE_CHECKER_BIN)
 

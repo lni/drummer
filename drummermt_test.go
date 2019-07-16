@@ -35,14 +35,7 @@ func runDrummerMonkeyTest(t *testing.T, appname string) {
 	dragonboat.SetIncomingProposalsMaxLen(64)
 	dragonboat.SetIncomingReadIndexMaxLen(64)
 	dragonboat.SetReceiveQueueLen(64)
-	/*
-		transport.SetPerConnBufferSize(64 * 1024)
-		transport.SetSendQueueLength(64)
-		transport.SetSnapshotChunkSize(1024)
-		transport.SetPayloadBuffserSize(1024 * 8)
-		logdb.SetEntryBatchSize(4)
-		logdb.SetLogDBInstanceCount(1)
-		logdb.SetRDBContextSize(1)*/
+	dragonboat.ApplyMonkeySettings()
 	rand.Seed(int64(os.Getpid()))
 	logger.GetLogger("dragonboat").SetLevel(logger.DEBUG)
 	logger.GetLogger("transport").SetLevel(logger.DEBUG)
