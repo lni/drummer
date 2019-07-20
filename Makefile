@@ -155,4 +155,5 @@ monkey-drummer:
 clean:
 	rm -f $(DRUMMER_MONKEY_TESTING_BIN) $(PORCUPINE_CHECKER_BIN)
 
-.PHNOY: test clean $(PORCUPINE_CHECKER_BIN) $(DRUMMER_MONKEY_TESTING_BIN)
+.PHNOY: test clean $(PORCUPINE_CHECKER_BIN) $(DRUMMER_MONKEY_TESTING_BIN) \
+	drummer-monkey-test-bin porcupine-checker
