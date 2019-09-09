@@ -57,7 +57,8 @@ func TestOnDiskClusterCanSurviveDrummerMonkeyPlay(t *testing.T) {
 	runDrummerMonkeyTest(t, "diskkv")
 }
 
+/*
 func TestCPPKVCanSurviveDrummerMonkeyPlay(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	runDrummerMonkeyTest(t, "cpp-cppkvtest")
-}
+}*/
