@@ -13,6 +13,12 @@
 # limitations under the License.
 
 OS := $(shell uname)
+ifneq (,$(findstring MINGW,$(OS)))
+$(info OS is Windows)
+OSWIN=1
+else
+OSWIN=0
+endif
 # the location of this Makefile
 PKGROOT=$(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))
 # name of the package
@@ -40,7 +46,7 @@ ifeq ($(OS),Darwin)
 ROCKSDB_SO_FILE=librocksdb.$(ROCKSDB_MAJOR_VER).dylib
 else ifeq ($(OS),Linux)
 ROCKSDB_SO_FILE=librocksdb.so.$(ROCKSDB_MAJOR_VER)
-else
+else ifneq ($(OSWIN),1)
 $(error OS type $(OS) not supported)
 endif
 
