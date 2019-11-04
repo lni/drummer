@@ -219,6 +219,7 @@ func getMonkeyTestConfig() (config.Config, config.NodeHostConfig) {
 		WALDir:         "drummermt",
 		NodeHostDir:    "drummermt",
 		RTTMillisecond: 50,
+		LogDBFactory:   getLogDBFactory(),
 	}
 	return rc, nhc
 }

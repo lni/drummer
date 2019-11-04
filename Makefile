@@ -37,10 +37,6 @@ GOCMD=go
 LOGDB_TAG=dragonboat_no_rocksdb
 else ifeq ($(DRAGONBOAT_LOGDB),)
 $(info using rocksdb based log storage)
-ROCKSDB_MAJOR_VER=5
-ROCKSDB_MINOR_VER=13
-ROCKSDB_PATCH_VER=4
-ROCKSDB_VER ?= $(ROCKSDB_MAJOR_VER).$(ROCKSDB_MINOR_VER).$(ROCKSDB_PATCH_VER)
 
 ifeq ($(OS),Darwin)
 ROCKSDB_SO_FILE=librocksdb.$(ROCKSDB_MAJOR_VER).dylib
@@ -127,7 +123,7 @@ DRUMMER_MONKEY_TEST_BUILDTAGS=dragonboat_monkeytest
 
 $(DRUMMER_MONKEY_TESTING_BIN):
 	$(GO) test $(RACE_DETECTOR_FLAG) $(VERBOSE) \
-		-tags="$(DRUMMER_MONKEY_TEST_BUILDTAGS)" -c -o $@ $(PKGNAME)
+		-tags="$(DRUMMER_MONKEY_TEST_BUILDTAGS) $(LOGDB_TAG)" -c -o $@ $(PKGNAME)
 drummer-monkey-test-bin:$(DRUMMER_MONKEY_TESTING_BIN)
 
 $(PORCUPINE_CHECKER_BIN):
@@ -160,7 +156,8 @@ monkey-drummer:
 	$(GOTEST) $(BUILD_TEST_ONLY) $(PKGNAME)
 
 clean:
-	rm -f $(DRUMMER_MONKEY_TESTING_BIN) $(PORCUPINE_CHECKER_BIN)
+	@find . -type d -name "*safe_to_delete" -print | xargs rm -rf
+	@rm -f $(DRUMMER_MONKEY_TESTING_BIN) $(PORCUPINE_CHECKER_BIN)
 
 .PHONY: test clean $(PORCUPINE_CHECKER_BIN) $(DRUMMER_MONKEY_TESTING_BIN) \
 	drummer-monkey-test-bin porcupine-checker

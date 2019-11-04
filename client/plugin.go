@@ -52,7 +52,7 @@ func getNativePlugins(path string,
 	result map[string]pluginDetails) map[string]pluginDetails {
 	result["kvtest"] = pluginDetails{createNativeStateMachine: tests.NewKVTest}
 	result["concurrentkv"] = pluginDetails{createConcurrentStateMachine: tests.NewConcurrentKVTest}
-	result["diskkv"] = pluginDetails{createOnDiskStateMachine: tests.NewDiskKVTest}
+	result["diskkv"] = pluginDetails{createOnDiskStateMachine: getOnDiskSMFactory()}
 	return result
 }
 
