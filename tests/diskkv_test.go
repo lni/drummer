@@ -39,7 +39,7 @@ func TestRocksDBCanBeCreatedAndUsed(t *testing.T) {
 	}
 	key := []byte("test-key")
 	val := []byte("test-val")
-	if err := db.db.Put(db.wo, key, val); err != nil {
+	if err := db.db.Set(key, val, db.wo); err != nil {
 		t.Fatalf("failed to put kv %v", err)
 	}
 	result, err := db.lookup(key)

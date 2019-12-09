@@ -151,6 +151,9 @@ slow-drummer: TESTTAGVALS+=$(DRUMMER_SLOW_TEST_BUILDTAGS)
 slow-drummer:
 	$(GOTEST) $(BUILD_TEST_ONLY) $(PKGNAME)
 
+test-tests:
+	$(GOTEST) $(PKGNAME)/tests
+
 monkey-drummer: TESTTAGVALS+=$(DRUMMER_MONKEY_TEST_BUILDTAGS)
 monkey-drummer:
 	$(GOTEST) $(BUILD_TEST_ONLY) $(PKGNAME)
