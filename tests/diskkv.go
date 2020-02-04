@@ -28,6 +28,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -40,10 +41,35 @@ import (
 
 	sm "github.com/lni/dragonboat/v3/statemachine"
 	"github.com/lni/drummer/v3/kvpb"
-	"github.com/lni/goutils/fileutil"
 	"github.com/lni/goutils/logutil"
 	"github.com/lni/goutils/random"
 )
+
+func syncDir(dir string) (err error) {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	if dir == "." {
+		return nil
+	}
+	fileInfo, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if !fileInfo.IsDir() {
+		panic("not a dir")
+	}
+	df, err := os.Open(filepath.Clean(dir))
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := df.Close(); err == nil {
+			err = cerr
+		}
+	}()
+	return df.Sync()
+}
 
 const (
 	appliedIndexKey    string = "disk_kv_applied_index"
@@ -185,7 +211,7 @@ func replaceCurrentDBFile(dir string) error {
 	if err := os.Rename(tmpFp, fp); err != nil {
 		return err
 	}
-	return fileutil.SyncDir(dir)
+	return syncDir(dir)
 }
 
 func saveCurrentDBDirName(dir string, dbdir string) error {
@@ -202,7 +228,7 @@ func saveCurrentDBDirName(dir string, dbdir string) error {
 		if err := f.Close(); err != nil {
 			panic(err)
 		}
-		if err := fileutil.SyncDir(dir); err != nil {
+		if err := syncDir(dir); err != nil {
 			panic(err)
 		}
 	}()
