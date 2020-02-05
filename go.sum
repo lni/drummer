@@ -10,6 +10,8 @@ github.com/cockroachdb/pebble v0.0.0-20191101210655-58fbf96a8f51 h1:3nGTF/vqDv7i
 github.com/cockroachdb/pebble v0.0.0-20191101210655-58fbf96a8f51/go.mod h1:twXYbyRT08hc2A/Biqg5F7ApFx4RescpK/JYjiGSzH8=
 github.com/cockroachdb/pebble v0.0.0-20191206193421-382a403837cb h1:mdDWf+P2yXETVaEDwV0qDtWhJURe4S1R2hFTDJLP9gU=
 github.com/cockroachdb/pebble v0.0.0-20191206193421-382a403837cb/go.mod h1:otn7kdos/nNp9stODya2I5PfHTUJ1gHdwlnJfLpO3Jk=
+github.com/cockroachdb/pebble v0.0.0-20200121195918-c23353d37a7f h1:BCwKMHAtdfGVA7zRu901jItbI60uIflxtN5X3WCsTa8=
+github.com/cockroachdb/pebble v0.0.0-20200121195918-c23353d37a7f/go.mod h1:97dSg7Ku6fZIyYdu6XUrh31SaKMdnSUN3aDW2Fi8Zp8=
 github.com/codahale/hdrhistogram v0.0.0-20161010025455-3a0bb77429bd/go.mod h1:sE/e/2PUdi/liOCUjSTXgM1o87ZssimdTWN964YiIeI=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/ghemawat/stream v0.0.0-20171120220530-696b145b53b9/go.mod h1:106OIgooyS7OzLDOpUGgm9fA3bQENb/cFSyyBmMoJDs=

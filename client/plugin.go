@@ -16,11 +16,58 @@ package client
 
 import (
 	"fmt"
+	"io/ioutil"
+	"regexp"
+	"strings"
 
 	sm "github.com/lni/dragonboat/v3/statemachine"
 	"github.com/lni/drummer/v3/tests"
-	"github.com/lni/goutils/fileutil"
 )
+
+var (
+	appNameRegex     = regexp.MustCompile(`^dragonboat-cpp-plugin-(?P<appname>.+)\.so$`)
+	cppFileNameRegex = regexp.MustCompile(`^dragonboat-cpp-plugin-.+\.so$`)
+	soFileNameRegex  = regexp.MustCompile(`^dragonboat-plugin-.+\.so$`)
+)
+
+// GetAppNameFromFilename returns the app name from the filename.
+func GetAppNameFromFilename(soName string) string {
+	results := appNameRegex.FindStringSubmatch(soName)
+	return results[1]
+}
+
+// GetPossibleCPPSOFiles returns a list of possible .so files found in the
+// specified path.
+func GetPossibleCPPSOFiles(path string) []string {
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		return nil
+	}
+	result := make([]string, 0)
+	for _, f := range files {
+		fn := strings.ToLower(f.Name())
+		if !f.IsDir() && cppFileNameRegex.MatchString(fn) {
+			result = append(result, fn)
+		}
+	}
+	return result
+}
+
+// GetPossibleSOFiles returns a list of possible .so files.
+func GetPossibleSOFiles(path string) []string {
+	files, err := ioutil.ReadDir(path)
+	if err != nil {
+		return nil
+	}
+	result := make([]string, 0)
+	for _, f := range files {
+		fn := strings.ToLower(f.Name())
+		if !f.IsDir() && soFileNameRegex.MatchString(fn) {
+			result = append(result, fn)
+		}
+	}
+	return result
+}
 
 type pluginDetails struct {
 	filepath                     string
@@ -58,7 +105,7 @@ func getNativePlugins(path string,
 
 func getCppPlugins(path string,
 	result map[string]pluginDetails) map[string]pluginDetails {
-	for _, cp := range fileutil.GetPossibleCPPSOFiles(path) {
+	for _, cp := range GetPossibleCPPSOFiles(path) {
 		// FIXME:
 		// re-enable the following check
 		// check whether using cgo in multiraft package is going trigger
@@ -67,7 +114,7 @@ func getCppPlugins(path string,
 		//if !isValidCPPPlugin(cp) {
 		//	panic(fmt.Sprintf("invalid cpp plugin at %s", cp))
 		//}
-		appName := fileutil.GetAppNameFromFilename(cp)
+		appName := GetAppNameFromFilename(cp)
 		entryName := fmt.Sprintf("cpp-%s", appName)
 		plog.Infof("adding a C++ plugin %s, entryName: %s, appName: %s",
 			cp, entryName, appName)
