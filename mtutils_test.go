@@ -26,7 +26,6 @@ import (
 	"math"
 	"math/rand"
 	"os"
-	"path/filepath"
 	"runtime"
 	"runtime/pprof"
 	"strconv"
@@ -170,35 +169,27 @@ func (t nodeType) String() string {
 	}
 }
 
-func prepareMonkeyTestDirs(dl *mtAddressList) ([]string, []string) {
-	removeMonkeyTestDir()
+func getMonkeyTestDirs(dl *mtAddressList) ([]string, []string) {
 	drummerDirList := make([]string, 0)
 	nodehostDirList := make([]string, 0)
 	// drummer first
 	for i := uint64(1); i <= uint64(len(dl.addressList)); i++ {
 		nn := fmt.Sprintf("drummer-node-%d", i)
-		nd := filepath.Join(monkeyTestWorkingDir, nn)
-		if err := os.MkdirAll(nd, 0755); err != nil {
-			panic(err)
-		}
-		drummerDirList = append(drummerDirList, nd)
+		drummerDirList = append(drummerDirList, nn)
 	}
 	// nodehost dirs
 	for i := uint64(1); i <= uint64(len(dl.nodehostAddressList)); i++ {
 		nn := fmt.Sprintf("nodehost-node-%d", i)
-		nd := filepath.Join(monkeyTestWorkingDir, nn)
-		if err := os.MkdirAll(nd, 0755); err != nil {
-			panic(err)
-		}
-		nodehostDirList = append(nodehostDirList, nd)
+		nodehostDirList = append(nodehostDirList, nn)
 	}
 	return drummerDirList, nodehostDirList
 }
 
-func removeMonkeyTestDir() {
-	os.RemoveAll(monkeyTestWorkingDir)
+func removeMonkeyTestDir(fs config.IFS) {
+	fs.RemoveAll(monkeyTestWorkingDir)
 }
 
+// TODO: need to save the test dir when running in the memfs mode
 func saveMonkeyTestDir() {
 	newName := fmt.Sprintf("%s-%d", monkeyTestWorkingDir, rand.Uint64())
 	plog.Infof("going to save the monkey test data dir to %s", newName)
@@ -240,6 +231,7 @@ type testNode struct {
 	next               int64
 	stopper            *syncutil.Stopper
 	mutualTLS          bool
+	fs                 config.IFS
 }
 
 func (n *testNode) MustBeDrummerNode() {
@@ -407,9 +399,10 @@ func (n *testNode) startDrummerNode(dl *mtAddressList) {
 	rc, nhc := getMonkeyTestConfig()
 	config := config.NodeHostConfig{}
 	config = nhc
-	config.NodeHostDir = filepath.Join(n.dir, nhc.NodeHostDir)
-	config.WALDir = filepath.Join(n.dir, nhc.WALDir)
+	config.NodeHostDir = n.fs.PathJoin(n.dir, nhc.NodeHostDir)
+	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
 	config.RaftAddress = dl.addressList[n.listIndex]
+	config.FS = n.fs
 	if n.mutualTLS {
 		config.MutualTLS = true
 		config.CAFile = caFile
@@ -454,9 +447,10 @@ func (n *testNode) startNodehostNode(dl *mtAddressList) {
 	_, nhc := getMonkeyTestConfig()
 	config := config.NodeHostConfig{}
 	config = nhc
-	config.NodeHostDir = filepath.Join(n.dir, nhc.NodeHostDir)
-	config.WALDir = filepath.Join(n.dir, nhc.WALDir)
+	config.NodeHostDir = n.fs.PathJoin(n.dir, nhc.NodeHostDir)
+	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
 	config.RaftAddress = dl.nodehostAddressList[n.listIndex]
+	config.FS = n.fs
 	apiAddress := dl.nodehostAPIAddressList[n.listIndex]
 	if n.mutualTLS {
 		config.MutualTLS = true
@@ -739,42 +733,45 @@ func checkStateMachine(t *testing.T, nodes []*testNode) {
 		len(hashMap), len(sessionHashMap))
 }
 
-func removeNodeHostTestDirForTesting(listIndex uint64) {
-	idx := listIndex + 1
+func removeNodeHostTestDirForTesting(n *testNode) {
+	idx := n.listIndex + 1
 	nn := fmt.Sprintf("nodehost-node-%d", idx)
-	nd := filepath.Join(monkeyTestWorkingDir, nn)
+	nd := n.fs.PathJoin(monkeyTestWorkingDir, nn)
 	plog.Infof("monkey is going to delete nodehost dir at %s for testing", nd)
-	if err := os.RemoveAll(nd); err != nil {
-		panic(err)
-	}
-	if err := os.MkdirAll(nd, 0755); err != nil {
+	if err := n.fs.RemoveAll(nd); err != nil {
 		panic(err)
 	}
 }
 
 func createTestNodeLists(dl *mtAddressList) ([]*testNode, []*testNode) {
-	drummerDirList, nodehostDirList := prepareMonkeyTestDirs(dl)
+	drummerDirList, nodehostDirList := getMonkeyTestDirs(dl)
 	drummerNodes := make([]*testNode, len(dl.addressList))
 	nodehostNodes := make([]*testNode, len(dl.nodehostAddressList))
 	for i := uint64(0); i < uint64(len(dl.addressList)); i++ {
+		fs := dragonboat.GetTestFS()
 		drummerNodes[i] = &testNode{
 			listIndex:          i,
 			stopped:            true,
-			dir:                drummerDirList[i],
+			dir:                fs.PathJoin(monkeyTestWorkingDir, drummerDirList[i]),
 			nodeType:           nodeTypeDrummer,
 			partitionStartTime: make(map[uint64]struct{}),
 			partitionEndTime:   make(map[uint64]struct{}),
+			fs:                 fs,
 		}
+		removeMonkeyTestDir(fs)
 	}
 	for i := uint64(0); i < uint64(len(dl.nodehostAddressList)); i++ {
+		fs := dragonboat.GetTestFS()
 		nodehostNodes[i] = &testNode{
 			listIndex:          i,
 			stopped:            true,
-			dir:                nodehostDirList[i],
+			dir:                fs.PathJoin(monkeyTestWorkingDir, nodehostDirList[i]),
 			nodeType:           nodeTypeNodehost,
 			partitionStartTime: make(map[uint64]struct{}),
 			partitionEndTime:   make(map[uint64]struct{}),
+			fs:                 fs,
 		}
+		removeMonkeyTestDir(fs)
 	}
 	return drummerNodes, nodehostNodes
 }
@@ -898,7 +895,7 @@ func monkeyPlay(nodes []*testNode, low int64, high int64,
 				if rand.Uint64()%5 == 0 && !deleteDataTested && lt < 800 {
 					plog.Infof("monkey is going to delete all data belongs to %s %d",
 						node.nodeType, node.listIndex+1)
-					removeNodeHostTestDirForTesting(node.listIndex)
+					removeNodeHostTestDirForTesting(node)
 					deleteDataTested = true
 				}
 			} else {
@@ -1380,7 +1377,7 @@ func drummerMonkeyTesting(t *testing.T, appname string) {
 			plog.Infof("test failed, going to save the monkey test dir")
 			saveMonkeyTestDir()
 		} else {
-			removeMonkeyTestDir()
+			removeMonkeyTestDir(dragonboat.GetTestFS())
 		}
 	}()
 	plog.Infof("snapshot disabled in monkey test %t, less snapshot %t",
