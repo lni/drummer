@@ -29,6 +29,8 @@ import (
 
 func runDrummerMonkeyTest(t *testing.T, appname string) {
 	runtime.GOMAXPROCS(10)
+	dragonboat.SetPendingProposalShards(2)
+	dragonboat.SetTaskBatchSize(8)
 	dragonboat.SetSnapshotWorkerCount(8)
 	dragonboat.SetWorkerCount(4)
 	dragonboat.SetTaskWorkerCount(4)
