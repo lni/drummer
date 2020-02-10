@@ -36,6 +36,10 @@ $(info using custom lodb)
 GOCMD=go
 LOGDB_TAG=dragonboat_no_rocksdb
 else ifeq ($(DRAGONBOAT_LOGDB),)
+ifneq ($(DRAGONBOAT_MEMFS_TEST),)
+$(info using memfs based pebble)
+LOGDB_TAG=dragonboat_memfs_test
+else
 $(info using rocksdb based log storage)
 
 ifeq ($(OS),Darwin)
@@ -44,6 +48,7 @@ else ifeq ($(OS),Linux)
 ROCKSDB_SO_FILE=librocksdb.so.$(ROCKSDB_MAJOR_VER)
 else ifneq ($(OSWIN),1)
 $(error OS type $(OS) not supported)
+endif
 endif
 
 ROCKSDB_INC_PATH ?=
