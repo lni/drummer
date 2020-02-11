@@ -207,10 +207,11 @@ func getMonkeyTestConfig() (config.Config, config.NodeHostConfig) {
 		CompactionOverhead: 100,
 	}
 	nhc := config.NodeHostConfig{
-		WALDir:         "drummermt",
-		NodeHostDir:    "drummermt",
-		RTTMillisecond: 50,
-		LogDBFactory:   getLogDBFactory(),
+		WALDir:                "drummermt",
+		NodeHostDir:           "drummermt",
+		RTTMillisecond:        50,
+		LogDBFactory:          getLogDBFactory(),
+		SystemTickerPrecision: 10 * time.Millisecond,
 	}
 	return rc, nhc
 }
