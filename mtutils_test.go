@@ -338,6 +338,11 @@ func (n *testNode) Stop() {
 }
 
 func (n *testNode) Start(dl *mtAddressList) {
+	memfs, ok := n.fs.(*dragonboat.MemFS)
+	if ok {
+		plog.Infof("ResetToSyncedState called")
+		memfs.ResetToSyncedState()
+	}
 	if n.nodeType == nodeTypeDrummer {
 		n.startDrummerNode(dl)
 	} else if n.nodeType == nodeTypeNodehost {
