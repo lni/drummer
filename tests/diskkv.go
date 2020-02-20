@@ -49,6 +49,64 @@ const (
 	updatingDBFilename string = "current.updating"
 )
 
+func DirExist(name string, fs config.IFS) (bool, error) {
+	if name == "." || name == "/" {
+		return true, nil
+	}
+	f, err := fs.OpenDir(name)
+	if err != nil && os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	s, err := f.Stat()
+	if err != nil {
+		return false, err
+	}
+	if !s.IsDir() {
+		panic("not a dir")
+	}
+	return true, nil
+}
+
+func MkdirAll(dir string, fs config.IFS) error {
+	exist, err := DirExist(dir, fs)
+	if err != nil {
+		return err
+	}
+	if exist {
+		return nil
+	}
+	parent := fs.PathDir(dir)
+	exist, err = DirExist(parent, fs)
+	if err != nil {
+		return err
+	}
+	if !exist {
+		if err := MkdirAll(parent, fs); err != nil {
+			return err
+		}
+	}
+	return Mkdir(dir, fs)
+}
+
+func Mkdir(dir string, fs config.IFS) error {
+	parent := fs.PathDir(dir)
+	exist, err := DirExist(parent, fs)
+	if err != nil {
+		return err
+	}
+	if !exist {
+		panic(fmt.Sprintf("%s doesn't exist when creating %s", parent, dir))
+	}
+	if err := fs.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return syncDir(parent, fs)
+}
+
 func syncDir(dir string, fs config.IFS) (err error) {
 	if runtime.GOOS == "windows" {
 		return nil
@@ -215,11 +273,14 @@ func createDB(dbdir string, fs config.IFS) (*pebbledb, error) {
 		Cache:               cache,
 		FS:                  NewPebbleFS(fs),
 	}
+	if err := MkdirAll(dbdir, fs); err != nil {
+		return nil, err
+	}
 	db, err := pebble.Open(dbdir, opts)
 	if err != nil {
 		return nil, err
 	}
-	cache.Unref()
+	//cache.Unref()
 	return &pebbledb{
 		db:     db,
 		ro:     ro,
@@ -238,7 +299,11 @@ func isNewRun(dir string, fs config.IFS) bool {
 
 func getNodeDBDirName(clusterID uint64, nodeID uint64, fs config.IFS) string {
 	part := fmt.Sprintf("%d_%d", clusterID, nodeID)
-	return fs.PathJoin(testDBDirName, part)
+	dir, err := filepath.Abs(fs.PathJoin(testDBDirName, part))
+	if err != nil {
+		panic(err)
+	}
+	return dir
 }
 
 func getNewRandomDBDirName(dir string, fs config.IFS) string {
@@ -318,7 +383,11 @@ func getCurrentDBDirName(dir string, fs config.IFS) (string, error) {
 }
 
 func createNodeDataDir(dir string, fs config.IFS) error {
-	return fs.MkdirAll(dir, 0755)
+	parent := fs.PathDir(dir)
+	if err := MkdirAll(dir, fs); err != nil {
+		return err
+	}
+	return syncDir(parent, fs)
 }
 
 func cleanupNodeDataDir(dir string, fs config.IFS) error {
