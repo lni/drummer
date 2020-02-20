@@ -241,10 +241,11 @@ func (r *pebbledb) lookup(query []byte) ([]byte, error) {
 	if r.closed {
 		return nil, errors.New("db already closed")
 	}
-	val, err := r.db.Get(query)
+	val, closer, err := r.db.Get(query)
 	if err != nil {
 		return nil, err
 	}
+	defer closer.Close()
 	if len(val) == 0 {
 		return []byte(""), nil
 	}
@@ -280,7 +281,7 @@ func createDB(dbdir string, fs config.IFS) (*pebbledb, error) {
 	if err != nil {
 		return nil, err
 	}
-	//cache.Unref()
+	cache.Unref()
 	return &pebbledb{
 		db:     db,
 		ro:     ro,
@@ -450,11 +451,16 @@ func (d *DiskKVTest) id() string {
 }
 
 func (d *DiskKVTest) queryAppliedIndex(db *pebbledb) (uint64, error) {
-	val, err := db.db.Get([]byte(appliedIndexKey))
+	val, closer, err := db.db.Get([]byte(appliedIndexKey))
 	if err != nil && err != pebble.ErrNotFound {
 		fmt.Printf("[DKVE] %s failed to query applied index\n", d.id())
 		return 0, err
 	}
+	defer func() {
+		if closer != nil {
+			closer.Close()
+		}
+	}()
 	if len(val) == 0 {
 		fmt.Printf("[DKVE] %s does not have applied index stored yet\n", d.id())
 		return 0, nil
