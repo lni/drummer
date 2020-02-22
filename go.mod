@@ -5,7 +5,7 @@ require (
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/protobuf v1.3.3
 	github.com/lni/dragonboat/v3 v3.0.0-20200215091407-e0ca51bbbf20
-	github.com/lni/goutils v0.0.0-20200204124627-c7f9bec0a41d
+	github.com/lni/goutils v0.0.0-20200222081325-abff41629bcd
 	golang.org/x/net v0.0.0-20190628185345-da137c7871d7
 	google.golang.org/grpc v1.22.0
 )

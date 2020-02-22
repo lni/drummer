@@ -64,6 +64,8 @@ github.com/lni/dragonboat/v3 v3.1.3/go.mod h1:EQ/59ROPqeDktEFaZcz0lXSSnM74Yj7r92
 github.com/lni/goutils v0.0.0-20200127103218-6790055847c8/go.mod h1:NDD+zR5cMNH2OsJj+r/X7zBSzBlmxytUUot268gtOOw=
 github.com/lni/goutils v0.0.0-20200204124627-c7f9bec0a41d h1:zZY1ymb3hBW18zFufzTBv1oD1Zglfmr7kfhK7cRn8s4=
 github.com/lni/goutils v0.0.0-20200204124627-c7f9bec0a41d/go.mod h1:NDD+zR5cMNH2OsJj+r/X7zBSzBlmxytUUot268gtOOw=
+github.com/lni/goutils v0.0.0-20200222081325-abff41629bcd h1:wPZua40rgWetd1JL3v1QLPwrvPO79FJQE1wFj+by8Jg=
+github.com/lni/goutils v0.0.0-20200222081325-abff41629bcd/go.mod h1:NDD+zR5cMNH2OsJj+r/X7zBSzBlmxytUUot268gtOOw=
 github.com/lni/goutils v1.0.0 h1:6WZd06gJ8Z5D/xsfo/0Vjvpka4CnsfFEqA46jEa+QtY=
 github.com/lni/goutils v1.0.0/go.mod h1:YXJ/qxCzsqyfhiMd8eVZ+8EP+BZfzC3mbMIY5lJdqOg=
 github.com/lni/goutils v1.0.2 h1:XEQvY9GWR/4cUA35l55tIroD9gA2wlByOAu3thdnThA=
