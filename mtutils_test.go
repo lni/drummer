@@ -1350,11 +1350,11 @@ func setRandomPacketDropHook(nodes []*testNode, threshold uint64) {
 		}
 		return batch, true
 	}
-	snapshotHook := func(c raftpb.SnapshotChunk) (raftpb.SnapshotChunk, bool) {
+	snapshotHook := func(c raftpb.Chunk) (raftpb.Chunk, bool) {
 		sd := random.NewProbability(1000 * threshold)
 		if sd.Hit() {
 			plog.Infof("going to drop a snapshot chunk for testing purpose")
-			return raftpb.SnapshotChunk{}, false
+			return raftpb.Chunk{}, false
 		}
 		return c, true
 	}
