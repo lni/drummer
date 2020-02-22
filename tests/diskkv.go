@@ -12,10 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build !dragonboat_no_rocksdb
-// +build !dragonboat_pebble_test
-// +build !dragonboat_leveldb_test
-
 package tests
 
 import (
@@ -30,7 +26,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -38,38 +33,14 @@ import (
 	"unsafe"
 
 	"github.com/cockroachdb/pebble"
+	pvfs "github.com/cockroachdb/pebble/vfs"
 
+	"github.com/lni/dragonboat/v3/config"
 	sm "github.com/lni/dragonboat/v3/statemachine"
 	"github.com/lni/drummer/v3/kvpb"
 	"github.com/lni/goutils/logutil"
 	"github.com/lni/goutils/random"
 )
-
-func syncDir(dir string) (err error) {
-	if runtime.GOOS == "windows" {
-		return nil
-	}
-	if dir == "." {
-		return nil
-	}
-	fileInfo, err := os.Stat(dir)
-	if err != nil {
-		return err
-	}
-	if !fileInfo.IsDir() {
-		panic("not a dir")
-	}
-	df, err := os.Open(filepath.Clean(dir))
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if cerr := df.Close(); err == nil {
-			err = cerr
-		}
-	}()
-	return df.Sync()
-}
 
 const (
 	appliedIndexKey    string = "disk_kv_applied_index"
@@ -78,47 +49,180 @@ const (
 	updatingDBFilename string = "current.updating"
 )
 
-type inmem struct {
-	mu    sync.Mutex
-	kv    sync.Map
-	index uint64
-}
-
-func (im *inmem) put(key []byte, val []byte, index uint64) {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-	im.kv.Store(string(key), string(val))
-	im.index = index
-}
-
-func (im *inmem) get(key []byte) ([]byte, bool) {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-	val, ok := im.kv.Load(string(key))
-	if ok {
-		return []byte(val.(string)), true
+func DirExist(name string, fs config.IFS) (bool, error) {
+	if name == "." || name == "/" {
+		return true, nil
 	}
-	return nil, false
+	f, err := fs.OpenDir(name)
+	if err != nil && os.IsNotExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	s, err := f.Stat()
+	if err != nil {
+		return false, err
+	}
+	if !s.IsDir() {
+		panic("not a dir")
+	}
+	return true, nil
 }
 
-func (im *inmem) getIndex() uint64 {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-	return im.index
+func MkdirAll(dir string, fs config.IFS) error {
+	exist, err := DirExist(dir, fs)
+	if err != nil {
+		return err
+	}
+	if exist {
+		return nil
+	}
+	parent := fs.PathDir(dir)
+	exist, err = DirExist(parent, fs)
+	if err != nil {
+		return err
+	}
+	if !exist {
+		if err := MkdirAll(parent, fs); err != nil {
+			return err
+		}
+	}
+	return Mkdir(dir, fs)
 }
 
-func (im *inmem) deepCopy() *inmem {
-	im.mu.Lock()
-	defer im.mu.Unlock()
-	nim := &inmem{
-		index: im.index,
+func Mkdir(dir string, fs config.IFS) error {
+	parent := fs.PathDir(dir)
+	exist, err := DirExist(parent, fs)
+	if err != nil {
+		return err
 	}
-	r := func(k, v interface{}) bool {
-		nim.kv.Store(k, v)
-		return true
+	if !exist {
+		panic(fmt.Sprintf("%s doesn't exist when creating %s", parent, dir))
 	}
-	im.kv.Range(r)
-	return nim
+	if err := fs.MkdirAll(dir, 0755); err != nil {
+		return err
+	}
+	return syncDir(parent, fs)
+}
+
+func syncDir(dir string, fs config.IFS) (err error) {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	if dir == "." {
+		return nil
+	}
+	f, err := fs.OpenDir(filepath.Clean(dir))
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if cerr := f.Close(); err == nil {
+			err = cerr
+		}
+	}()
+	fileInfo, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if !fileInfo.IsDir() {
+		panic("not a dir")
+	}
+	return f.Sync()
+}
+
+// PebbleFS is a wrapper struct that implements the pebble/vfs.FS interface.
+type PebbleFS struct {
+	fs config.IFS
+}
+
+// NewPebbleFS creates a new pebble/vfs.FS instance.
+func NewPebbleFS(fs config.IFS) pvfs.FS {
+	return &PebbleFS{fs}
+}
+
+// Create ...
+func (p *PebbleFS) Create(name string) (pvfs.File, error) {
+	return p.fs.Create(name)
+}
+
+// Link ...
+func (p *PebbleFS) Link(oldname, newname string) error {
+	return p.fs.Link(oldname, newname)
+}
+
+// Open ...
+func (p *PebbleFS) Open(name string, opts ...pvfs.OpenOption) (pvfs.File, error) {
+	f, err := p.fs.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	for _, opt := range opts {
+		opt.Apply(f)
+	}
+	return f, nil
+}
+
+// OpenDir ...
+func (p *PebbleFS) OpenDir(name string) (pvfs.File, error) {
+	return p.fs.OpenDir(name)
+}
+
+// Remove ...
+func (p *PebbleFS) Remove(name string) error {
+	return p.fs.Remove(name)
+}
+
+// RemoveAll ...
+func (p *PebbleFS) RemoveAll(name string) error {
+	return p.fs.RemoveAll(name)
+}
+
+// Rename ...
+func (p *PebbleFS) Rename(oldname, newname string) error {
+	return p.fs.Rename(oldname, newname)
+}
+
+// ReuseForWrite ...
+func (p *PebbleFS) ReuseForWrite(oldname, newname string) (pvfs.File, error) {
+	return p.fs.ReuseForWrite(oldname, newname)
+}
+
+// MkdirAll ...
+func (p *PebbleFS) MkdirAll(dir string, perm os.FileMode) error {
+	return p.fs.MkdirAll(dir, perm)
+}
+
+// Lock ...
+func (p *PebbleFS) Lock(name string) (io.Closer, error) {
+	return p.fs.Lock(name)
+}
+
+// List ...
+func (p *PebbleFS) List(dir string) ([]string, error) {
+	return p.fs.List(dir)
+}
+
+// Stat ...
+func (p *PebbleFS) Stat(name string) (os.FileInfo, error) {
+	return p.fs.Stat(name)
+}
+
+// PathBase ...
+func (p *PebbleFS) PathBase(path string) string {
+	return p.fs.PathBase(path)
+}
+
+// PathJoin ...
+func (p *PebbleFS) PathJoin(elem ...string) string {
+	return p.fs.PathJoin(elem...)
+}
+
+// PathDir ...
+func (p *PebbleFS) PathDir(path string) string {
+	return p.fs.PathDir(path)
 }
 
 type pebbledb struct {
@@ -127,9 +231,8 @@ type pebbledb struct {
 	ro     *pebble.IterOptions
 	wo     *pebble.WriteOptions
 	syncwo *pebble.WriteOptions
-	opts   *pebble.Options
-	inmem  *inmem
 	closed bool
+	fs     config.IFS
 }
 
 func (r *pebbledb) lookup(query []byte) ([]byte, error) {
@@ -138,14 +241,11 @@ func (r *pebbledb) lookup(query []byte) ([]byte, error) {
 	if r.closed {
 		return nil, errors.New("db already closed")
 	}
-	v, ok := r.inmem.get(query)
-	if ok {
-		return v, nil
-	}
-	val, err := r.db.Get(query)
+	val, closer, err := r.db.Get(query)
 	if err != nil {
 		return nil, err
 	}
+	defer closer.Close()
 	if len(val) == 0 {
 		return []byte(""), nil
 	}
@@ -162,65 +262,74 @@ func (r *pebbledb) close() {
 		r.db.Close()
 	}
 }
-func createDB(dbdir string) (*pebbledb, error) {
+
+func createDB(dbdir string, fs config.IFS) (*pebbledb, error) {
 	ro := &pebble.IterOptions{}
 	wo := &pebble.WriteOptions{Sync: false}
 	syncwo := &pebble.WriteOptions{Sync: true}
+	cache := pebble.NewCache(0)
 	opts := &pebble.Options{
 		MaxManifestFileSize: 1024 * 32,
 		MemTableSize:        1024 * 32,
-		Cache:               pebble.NewCache(0),
+		Cache:               cache,
+		FS:                  NewPebbleFS(fs),
+	}
+	if err := MkdirAll(dbdir, fs); err != nil {
+		return nil, err
 	}
 	db, err := pebble.Open(dbdir, opts)
 	if err != nil {
 		return nil, err
 	}
+	cache.Unref()
 	return &pebbledb{
 		db:     db,
 		ro:     ro,
 		wo:     wo,
 		syncwo: syncwo,
-		opts:   opts,
-		inmem:  &inmem{},
 	}, nil
 }
 
-func isNewRun(dir string) bool {
-	fp := filepath.Join(dir, currentDBFilename)
-	if _, err := os.Stat(fp); os.IsNotExist(err) {
+func isNewRun(dir string, fs config.IFS) bool {
+	fp := fs.PathJoin(dir, currentDBFilename)
+	if _, err := fs.Stat(fp); os.IsNotExist(err) {
 		return true
 	}
 	return false
 }
 
-func getNodeDBDirName(clusterID uint64, nodeID uint64) string {
+func getNodeDBDirName(clusterID uint64, nodeID uint64, fs config.IFS) string {
 	part := fmt.Sprintf("%d_%d", clusterID, nodeID)
-	return filepath.Join(testDBDirName, part)
+	dir, err := filepath.Abs(fs.PathJoin(testDBDirName, part))
+	if err != nil {
+		panic(err)
+	}
+	return dir
 }
 
-func getNewRandomDBDirName(dir string) string {
+func getNewRandomDBDirName(dir string, fs config.IFS) string {
 	part := "%d_%d"
 	rn := random.LockGuardedRand.Uint64()
 	ct := time.Now().UnixNano()
-	return filepath.Join(dir, fmt.Sprintf(part, rn, ct))
+	return fs.PathJoin(dir, fmt.Sprintf(part, rn, ct))
 }
 
-func replaceCurrentDBFile(dir string) error {
-	fp := filepath.Join(dir, currentDBFilename)
-	tmpFp := filepath.Join(dir, updatingDBFilename)
-	if err := os.Rename(tmpFp, fp); err != nil {
+func replaceCurrentDBFile(dir string, fs config.IFS) error {
+	fp := fs.PathJoin(dir, currentDBFilename)
+	tmpFp := fs.PathJoin(dir, updatingDBFilename)
+	if err := fs.Rename(tmpFp, fp); err != nil {
 		return err
 	}
-	return syncDir(dir)
+	return syncDir(dir, fs)
 }
 
-func saveCurrentDBDirName(dir string, dbdir string) error {
+func saveCurrentDBDirName(dir string, dbdir string, fs config.IFS) error {
 	h := md5.New()
 	if _, err := h.Write([]byte(dbdir)); err != nil {
 		return err
 	}
-	fp := filepath.Join(dir, updatingDBFilename)
-	f, err := os.Create(fp)
+	fp := fs.PathJoin(dir, updatingDBFilename)
+	f, err := fs.Create(fp)
 	if err != nil {
 		return err
 	}
@@ -228,7 +337,7 @@ func saveCurrentDBDirName(dir string, dbdir string) error {
 		if err := f.Close(); err != nil {
 			panic(err)
 		}
-		if err := syncDir(dir); err != nil {
+		if err := syncDir(dir, fs); err != nil {
 			panic(err)
 		}
 	}()
@@ -244,9 +353,9 @@ func saveCurrentDBDirName(dir string, dbdir string) error {
 	return nil
 }
 
-func getCurrentDBDirName(dir string) (string, error) {
-	fp := filepath.Join(dir, currentDBFilename)
-	f, err := os.OpenFile(fp, os.O_RDONLY, 0755)
+func getCurrentDBDirName(dir string, fs config.IFS) (string, error) {
+	fp := fs.PathJoin(dir, currentDBFilename)
+	f, err := fs.Open(fp)
 	if err != nil {
 		return "", err
 	}
@@ -274,29 +383,40 @@ func getCurrentDBDirName(dir string) (string, error) {
 	return string(content), nil
 }
 
-func createNodeDataDir(dir string) error {
-	return os.MkdirAll(dir, 0755)
+func createNodeDataDir(dir string, fs config.IFS) error {
+	parent := fs.PathDir(dir)
+	if err := MkdirAll(dir, fs); err != nil {
+		return err
+	}
+	return syncDir(parent, fs)
 }
 
-func cleanupNodeDataDir(dir string) error {
-	os.RemoveAll(filepath.Join(dir, updatingDBFilename))
-	dbdir, err := getCurrentDBDirName(dir)
+func cleanupNodeDataDir(dir string, fs config.IFS) error {
+	if err := fs.RemoveAll(fs.PathJoin(dir, updatingDBFilename)); err != nil {
+		return err
+	}
+	dbdir, err := getCurrentDBDirName(dir, fs)
 	if err != nil {
 		return err
 	}
-	files, err := ioutil.ReadDir(dir)
+	dirs, err := fs.List(dir)
 	if err != nil {
 		return err
 	}
-	for _, fi := range files {
+	for _, v := range dirs {
+		fp := fs.PathJoin(dir, v)
+		fi, err := fs.Stat(fp)
+		if err != nil {
+			return err
+		}
 		if !fi.IsDir() {
 			continue
 		}
 		fmt.Printf("dbdir %s, fi.name %s, dir %s\n", dbdir, fi.Name(), dir)
-		toDelete := filepath.Join(dir, fi.Name())
+		toDelete := fs.PathJoin(dir, fi.Name())
 		if toDelete != dbdir {
 			fmt.Printf("removing %s\n", toDelete)
-			if err := os.RemoveAll(toDelete); err != nil {
+			if err := fs.RemoveAll(toDelete); err != nil {
 				return err
 			}
 		}
@@ -312,6 +432,7 @@ type DiskKVTest struct {
 	db          unsafe.Pointer
 	closed      bool
 	aborted     bool
+	fs          config.IFS
 }
 
 // NewDiskKVTest creates a new disk kv test state machine.
@@ -330,41 +451,56 @@ func (d *DiskKVTest) id() string {
 }
 
 func (d *DiskKVTest) queryAppliedIndex(db *pebbledb) (uint64, error) {
-	idx := db.inmem.getIndex()
-	if idx > 0 {
-		return idx, nil
-	}
-	val, err := db.db.Get([]byte(appliedIndexKey))
+	val, closer, err := db.db.Get([]byte(appliedIndexKey))
 	if err != nil && err != pebble.ErrNotFound {
 		fmt.Printf("[DKVE] %s failed to query applied index\n", d.id())
 		return 0, err
 	}
+	defer func() {
+		if closer != nil {
+			closer.Close()
+		}
+	}()
 	if len(val) == 0 {
 		fmt.Printf("[DKVE] %s does not have applied index stored yet\n", d.id())
 		return 0, nil
 	}
-	return strconv.ParseUint(string(val), 10, 64)
+	return binary.LittleEndian.Uint64(val), nil
+}
+
+// SetTestFS sets the fs of the test SM.
+func (d *DiskKVTest) SetTestFS(fs config.IFS) {
+	if d.fs != nil {
+		panic("d.fs is not nil")
+	}
+	d.fs = fs
 }
 
 // Open opens the state machine.
 func (d *DiskKVTest) Open(stopc <-chan struct{}) (uint64, error) {
 	fmt.Printf("[DKVE] %s is being opened\n", d.id())
 	generateRandomDelay()
-	dir := getNodeDBDirName(d.clusterID, d.nodeID)
-	if err := createNodeDataDir(dir); err != nil {
+	if d.fs == nil {
+		panic("d.fs not set")
+	}
+	dir := getNodeDBDirName(d.clusterID, d.nodeID, d.fs)
+	if err := createNodeDataDir(dir, d.fs); err != nil {
 		panic(err)
 	}
+	if d.fs == nil {
+		panic("d.fs not set")
+	}
 	var dbdir string
-	if !isNewRun(dir) {
-		if err := cleanupNodeDataDir(dir); err != nil {
+	if !isNewRun(dir, d.fs) {
+		if err := cleanupNodeDataDir(dir, d.fs); err != nil {
 			return 0, err
 		}
 		var err error
-		dbdir, err = getCurrentDBDirName(dir)
+		dbdir, err = getCurrentDBDirName(dir, d.fs)
 		if err != nil {
 			return 0, err
 		}
-		if _, err := os.Stat(dbdir); err != nil {
+		if _, err := d.fs.Stat(dbdir); err != nil {
 			if os.IsNotExist(err) {
 				panic("db dir unexpectedly deleted")
 			}
@@ -372,16 +508,16 @@ func (d *DiskKVTest) Open(stopc <-chan struct{}) (uint64, error) {
 		fmt.Printf("[DKVE] %s being re-opened at %s\n", d.id(), dbdir)
 	} else {
 		fmt.Printf("[DKVE] %s doing a new run\n", d.id())
-		dbdir = getNewRandomDBDirName(dir)
-		if err := saveCurrentDBDirName(dir, dbdir); err != nil {
+		dbdir = getNewRandomDBDirName(dir, d.fs)
+		if err := saveCurrentDBDirName(dir, dbdir, d.fs); err != nil {
 			return 0, err
 		}
-		if err := replaceCurrentDBFile(dir); err != nil {
+		if err := replaceCurrentDBFile(dir, d.fs); err != nil {
 			return 0, err
 		}
 	}
 	fmt.Printf("[DKVE] %s going to create db at %s\n", d.id(), dbdir)
-	db, err := createDB(dbdir)
+	db, err := createDB(dbdir, d.fs)
 	if err != nil {
 		fmt.Printf("[DKVE] %s failed to create db\n", d.id())
 		return 0, err
@@ -392,8 +528,7 @@ func (d *DiskKVTest) Open(stopc <-chan struct{}) (uint64, error) {
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("[DKVE] %s opened its disk sm, index %d\n",
-		d.id(), appliedIndex)
+	fmt.Printf("[DKVE] %s opened its disk sm, index %d\n", d.id(), appliedIndex)
 	d.lastApplied = appliedIndex
 	return appliedIndex, nil
 }
@@ -424,6 +559,8 @@ func (d *DiskKVTest) Update(ents []sm.Entry) ([]sm.Entry, error) {
 	}
 	generateRandomDelay()
 	db := (*pebbledb)(atomic.LoadPointer(&d.db))
+	wb := db.db.NewBatch()
+	defer wb.Close()
 	for idx, e := range ents {
 		dataKv := &kvpb.PBKV{}
 		if err := dataKv.Unmarshal(e.Cmd); err != nil {
@@ -431,13 +568,16 @@ func (d *DiskKVTest) Update(ents []sm.Entry) ([]sm.Entry, error) {
 		}
 		key := dataKv.GetKey()
 		val := dataKv.GetVal()
-		db.inmem.put([]byte(key), []byte(val), e.Index)
+		wb.Set([]byte(key), []byte(val), db.syncwo)
 		ents[idx].Result = sm.Result{Value: uint64(len(ents[idx].Cmd))}
 	}
-	// idx := make([]byte, 8)
-	// binary.LittleEndian.PutUint64(idx, ents[len(ents)-1].Index)
-	// wb.Put([]byte(appliedIndexKey), idx)
+	idx := make([]byte, 8)
+	binary.LittleEndian.PutUint64(idx, ents[len(ents)-1].Index)
+	wb.Set([]byte(appliedIndexKey), idx, db.syncwo)
 	fmt.Printf("[DKVE] %s applied index recorded as %d\n", d.id(), ents[len(ents)-1].Index)
+	if err := db.db.Apply(wb, db.syncwo); err != nil {
+		return nil, err
+	}
 	if d.lastApplied >= ents[len(ents)-1].Index {
 		fmt.Printf("[DKVE] %s last applied not moving forward %d,%d\n",
 			d.id(), ents[len(ents)-1].Index, d.lastApplied)
@@ -458,23 +598,13 @@ func (d *DiskKVTest) Sync() error {
 	db := (*pebbledb)(atomic.LoadPointer(&d.db))
 	wb := db.db.NewBatch()
 	defer wb.Close()
-	im := db.inmem.deepCopy()
-	r := func(k, v interface{}) bool {
-		wb.Set([]byte(k.(string)), []byte(v.(string)), db.syncwo)
-		return true
-	}
-	im.kv.Range(r)
-	if im.index > 0 {
-		idx := fmt.Sprintf("%d", im.index)
-		wb.Set([]byte(appliedIndexKey), []byte(idx), db.syncwo)
-	}
+	wb.Set([]byte("dummy-key"), []byte("dummy-value"), db.syncwo)
 	return db.db.Apply(wb, db.syncwo)
 }
 
 type diskKVCtx struct {
 	db       *pebbledb
 	snapshot *pebble.Snapshot
-	inmem    *inmem
 }
 
 // PrepareSnapshot prepares snapshotting.
@@ -489,7 +619,6 @@ func (d *DiskKVTest) PrepareSnapshot() (interface{}, error) {
 	return &diskKVCtx{
 		db:       db,
 		snapshot: db.db.NewSnapshot(),
-		inmem:    db.inmem.deepCopy(),
 	}, nil
 }
 
@@ -498,8 +627,8 @@ func iteratorIsValid(iter *pebble.Iterator) bool {
 }
 
 func (d *DiskKVTest) saveToWriter(db *pebbledb,
-	inmem *inmem, ss *pebble.Snapshot, w io.Writer) error {
-	iter := db.db.NewIter(db.ro)
+	ss *pebble.Snapshot, w io.Writer) error {
+	iter := ss.NewIter(db.ro)
 	defer iter.Close()
 	var dataMap sync.Map
 	values := make([]*kvpb.PBKV, 0)
@@ -507,16 +636,6 @@ func (d *DiskKVTest) saveToWriter(db *pebbledb,
 		key := iter.Key()
 		val := iter.Value()
 		dataMap.Store(string(key), string(val))
-	}
-	r := func(k, v interface{}) bool {
-		dataMap.Store(k, v)
-		return true
-	}
-	inmem.kv.Range(r)
-	applied := inmem.getIndex()
-	if applied > 0 {
-		idx := fmt.Sprintf("%d", applied)
-		dataMap.Store(appliedIndexKey, idx)
 	}
 	toList := func(k, v interface{}) bool {
 		kv := &kvpb.PBKV{
@@ -539,11 +658,8 @@ func (d *DiskKVTest) saveToWriter(db *pebbledb,
 	}
 	for _, dataKv := range values {
 		if dataKv.Key == appliedIndexKey {
-			v, err := strconv.ParseUint(string(dataKv.Val), 10, 64)
-			if err != nil {
-				panic(err)
-			}
-			fmt.Printf("[DKVE] %s saving appliedIndexKey as %d\n", d.id(), v)
+			idx := binary.LittleEndian.Uint64([]byte(dataKv.Val))
+			fmt.Printf("[DKVE] %s saving appliedIndexKey as %d\n", d.id(), idx)
 		}
 		data, err := dataKv.Marshal()
 		if err != nil {
@@ -595,8 +711,8 @@ func (d *DiskKVTest) SaveSnapshot(ctx interface{},
 	db.mu.RLock()
 	defer db.mu.RUnlock()
 	ss := ctxdata.snapshot
-	inmem := ctxdata.inmem
-	return d.saveToWriter(db, inmem, ss, w)
+	defer ss.Close()
+	return d.saveToWriter(db, ss, w)
 }
 
 // RecoverFromSnapshot recovers the state machine state from snapshot.
@@ -621,14 +737,14 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 	if _, err := io.ReadFull(r, rubbish); err != nil {
 		return err
 	}
-	dir := getNodeDBDirName(d.clusterID, d.nodeID)
-	dbdir := getNewRandomDBDirName(dir)
-	oldDirName, err := getCurrentDBDirName(dir)
+	dir := getNodeDBDirName(d.clusterID, d.nodeID, d.fs)
+	dbdir := getNewRandomDBDirName(dir, d.fs)
+	oldDirName, err := getCurrentDBDirName(dir, d.fs)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("[DKVE] %s is creating a tmp db at %s\n", d.id(), dbdir)
-	db, err := createDB(dbdir)
+	db, err := createDB(dbdir, d.fs)
 	if err != nil {
 		return err
 	}
@@ -654,7 +770,7 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 			panic(err)
 		}
 		if dataKv.Key == appliedIndexKey {
-			v, err := strconv.ParseUint(dataKv.Val, 10, 64)
+			v := binary.LittleEndian.Uint64([]byte(dataKv.Val))
 			if err != nil {
 				panic(err)
 			}
@@ -665,10 +781,10 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 	if err := db.db.Apply(wb, db.syncwo); err != nil {
 		return err
 	}
-	if err := saveCurrentDBDirName(dir, dbdir); err != nil {
+	if err := saveCurrentDBDirName(dir, dbdir, d.fs); err != nil {
 		return err
 	}
-	if err := replaceCurrentDBFile(dir); err != nil {
+	if err := replaceCurrentDBFile(dir, d.fs); err != nil {
 		return err
 	}
 	fmt.Printf("[DKVE] %s replaced db %s with %s\n", d.id(), oldDirName, dbdir)
@@ -691,7 +807,11 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 		old.close()
 	}
 	fmt.Printf("[DKVE] %s to delete olddb at %s\n", d.id(), oldDirName)
-	return os.RemoveAll(oldDirName)
+	parent := d.fs.PathDir(oldDirName)
+	if err := d.fs.RemoveAll(oldDirName); err != nil {
+		return err
+	}
+	return syncDir(parent, d.fs)
 }
 
 // Close closes the state machine.
@@ -715,9 +835,10 @@ func (d *DiskKVTest) GetHash() (uint64, error) {
 	h := md5.New()
 	db := (*pebbledb)(atomic.LoadPointer(&d.db))
 	ss := db.db.NewSnapshot()
+	defer ss.Close()
 	db.mu.RLock()
 	defer db.mu.RUnlock()
-	if err := d.saveToWriter(db, db.inmem, ss, h); err != nil {
+	if err := d.saveToWriter(db, ss, h); err != nil {
 		return 0, err
 	}
 	md5sum := h.Sum(nil)

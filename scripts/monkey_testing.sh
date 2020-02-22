@@ -14,6 +14,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+set -e
+
 OS=`uname`
 if [ $OS = "Darwin" ]; then
   # sudo diskutil erasevolume HFS+ "ramdisk" `hdiutil attach -nomount ram://4629672`
@@ -49,8 +51,20 @@ seq=`seq 1 $NOJ`
 
 deploy()
 {
-  set -e
-  make -C .. drummer-monkey-test-bin
+  if [[ -z "${ONDISK_TEST}" ]]; then
+    smtype="in memory"
+    testsed="sed -e s/SELECTEDTEST/TestClusterCanSurviveDrummerMonkeyPlay/g"
+  else
+    smtype="on disk"
+    testsed="sed -e s/SELECTEDTEST/TestOnDiskClusterCanSurviveDrummerMonkeyPlay/g"
+  fi
+  if [[ -z "${DRAGONBOAT_MEMFS_TEST}" ]]; then
+    echo "regular test mode, sm type: $smtype"
+    make -C .. drummer-monkey-test-bin
+  else
+    echo "memfs test mode, sm type: $smtype"
+    DRAGONBOAT_MEMFS_TEST=1 make -C .. drummer-monkey-test-bin
+  fi
   make -C .. porcupine-checker
   rm -rf $TARGETDIR/*
   cp rdttools.sh $TARGETDIR
@@ -76,7 +90,9 @@ deploy()
     ln -s $TARGETDIR/bin/$EXECNAME $DIR/$EXECNAME
     base=$((base+incv))
     sedcmd="sed -e s/BASEPORT/${base}/g"
-    cat runscript_template.sh | ${sedcmd} > $DIR/$RUNTEST
+    cat runscript_template.sh | ${testsed} > $DIR/runscrupt.tmp
+    cat $DIR/runscrupt.tmp | ${sedcmd} > $DIR/$RUNTEST
+    rm $DIR/runscrupt.tmp
     chmod +x $DIR/$RUNTEST
   done
   return

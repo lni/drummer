@@ -12,31 +12,30 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build !dragonboat_no_rocksdb
-// +build !dragonboat_pebble_test
-// +build !dragonboat_leveldb_test
-
 package tests
 
 import (
 	"bytes"
-	"io"
+	"encoding/binary"
 	"os"
 	"path"
-	"strconv"
 	"testing"
 
+	"github.com/lni/dragonboat/v3"
+	"github.com/lni/dragonboat/v3/config"
 	sm "github.com/lni/dragonboat/v3/statemachine"
 	"github.com/lni/drummer/v3/kvpb"
 )
 
-func TestRocksDBCanBeCreatedAndUsed(t *testing.T) {
+func TestDBCanBeCreatedAndUsed(t *testing.T) {
+	fs := dragonboat.GetTestFS()
 	dbdir := "rocksdb_db_test_safe_to_delete"
-	defer os.RemoveAll(dbdir)
-	db, err := createDB(dbdir)
+	defer fs.RemoveAll(dbdir)
+	db, err := createDB(dbdir, fs)
 	if err != nil {
 		t.Fatalf("failed to create db %v", err)
 	}
+	defer db.close()
 	key := []byte("test-key")
 	val := []byte("test-val")
 	if err := db.db.Set(key, val, db.wo); err != nil {
@@ -49,33 +48,34 @@ func TestRocksDBCanBeCreatedAndUsed(t *testing.T) {
 	if !bytes.Equal(result, val) {
 		t.Fatalf("result changed")
 	}
-	db.close()
 }
 
 func TestIsNewRun(t *testing.T) {
+	fs := dragonboat.GetTestFS()
 	dbdir := "rocksdb_db_test_safe_to_delete"
-	defer os.RemoveAll(dbdir)
-	if err := os.MkdirAll(dbdir, 0755); err != nil {
+	defer fs.RemoveAll(dbdir)
+	if err := fs.MkdirAll(dbdir, 0755); err != nil {
 		t.Fatalf("%v", err)
 	}
-	if !isNewRun(dbdir) {
+	if !isNewRun(dbdir, fs) {
 		t.Errorf("not a new run")
 	}
-	f, err := os.Create(path.Join(dbdir, currentDBFilename))
+	f, err := fs.Create(fs.PathJoin(dbdir, currentDBFilename))
 	if err != nil {
 		t.Fatalf("failed to create the current db file")
 	}
 	f.Close()
-	if isNewRun(dbdir) {
+	if isNewRun(dbdir, fs) {
 		t.Errorf("still considered as a new run")
 	}
 }
 
 func TestGetNodeDBDirName(t *testing.T) {
+	fs := dragonboat.GetTestFS()
 	names := make(map[string]struct{})
 	for c := uint64(0); c < 128; c++ {
 		for n := uint64(0); n < 128; n++ {
-			name := getNodeDBDirName(c, n)
+			name := getNodeDBDirName(c, n, fs)
 			names[name] = struct{}{}
 		}
 	}
@@ -85,11 +85,12 @@ func TestGetNodeDBDirName(t *testing.T) {
 }
 
 func TestGetNewRandomDBDirName(t *testing.T) {
+	fs := dragonboat.GetTestFS()
 	names := make(map[string]struct{})
 	for c := uint64(0); c < 128; c++ {
 		for n := uint64(0); n < 128; n++ {
-			name := getNodeDBDirName(c, n)
-			dbdir := getNewRandomDBDirName(name)
+			name := getNodeDBDirName(c, n, fs)
+			dbdir := getNewRandomDBDirName(name, fs)
 			names[dbdir] = struct{}{}
 		}
 	}
@@ -98,70 +99,30 @@ func TestGetNewRandomDBDirName(t *testing.T) {
 	}
 }
 
-func TestCorruptedDBDirFileIsReported(t *testing.T) {
-	dbdir := "rocksdb_db_test_safe_to_delete"
-	if err := os.MkdirAll(dbdir, 0755); err != nil {
-		t.Fatalf("%v", err)
-	}
-	defer os.RemoveAll(dbdir)
-	content := "content"
-	if err := saveCurrentDBDirName(dbdir, content); err != nil {
-		t.Fatalf("failed to save current file %v", err)
-	}
-	if err := replaceCurrentDBFile(dbdir); err != nil {
-		t.Errorf("failed to rename the current db file %v", err)
-	}
-	func() {
-		f, err := os.OpenFile(path.Join(dbdir, currentDBFilename), os.O_RDWR, 0755)
-		if err != nil {
-			t.Fatalf("failed to open file %v", err)
-		}
-		defer f.Close()
-		v := make([]byte, 1)
-		if _, err := io.ReadFull(f, v); err != nil {
-			t.Fatalf("failed to read %v", err)
-		}
-		if _, err := f.Seek(0, 0); err != nil {
-			t.Fatalf("seek failed %v", err)
-		}
-		v[0] = byte(v[0] + 1)
-		if _, err := f.Write(v); err != nil {
-			t.Fatalf("write failed %v", err)
-		}
-	}()
-	defer func() {
-		if r := recover(); r == nil {
-			t.Fatalf("no panic")
-		}
-	}()
-	if _, err := getCurrentDBDirName(dbdir); err != nil {
-		t.Fatalf("%v", err)
-	}
-}
-
 func TestSaveCurrentDBDirName(t *testing.T) {
+	fs := dragonboat.GetTestFS()
 	dbdir := "rocksdb_db_test_safe_to_delete"
-	if err := os.MkdirAll(dbdir, 0755); err != nil {
+	if err := fs.MkdirAll(dbdir, 0755); err != nil {
 		t.Fatalf("%v", err)
 	}
-	defer os.RemoveAll(dbdir)
+	defer fs.RemoveAll(dbdir)
 	content := "content"
-	if err := saveCurrentDBDirName(dbdir, content); err != nil {
+	if err := saveCurrentDBDirName(dbdir, content, fs); err != nil {
 		t.Fatalf("failed to save current file %v", err)
 	}
-	if _, err := os.Stat(path.Join(dbdir, updatingDBFilename)); os.IsNotExist(err) {
+	if _, err := fs.Stat(fs.PathJoin(dbdir, updatingDBFilename)); os.IsNotExist(err) {
 		t.Fatalf("file not exist")
 	}
-	if !isNewRun(dbdir) {
+	if !isNewRun(dbdir, fs) {
 		t.Errorf("suppose to be a new run")
 	}
-	if err := replaceCurrentDBFile(dbdir); err != nil {
+	if err := replaceCurrentDBFile(dbdir, fs); err != nil {
 		t.Errorf("failed to rename the current db file %v", err)
 	}
-	if isNewRun(dbdir) {
+	if isNewRun(dbdir, fs) {
 		t.Errorf("still a new run")
 	}
-	result, err := getCurrentDBDirName(dbdir)
+	result, err := getCurrentDBDirName(dbdir, fs)
 	if err != nil {
 		t.Fatalf("failed to get current db dir name %v", err)
 	}
@@ -171,28 +132,29 @@ func TestSaveCurrentDBDirName(t *testing.T) {
 }
 
 func TestCleanupNodeDataDir(t *testing.T) {
+	fs := dragonboat.GetTestFS()
 	dbdir := "rocksdb_db_test_safe_to_delete"
-	if err := os.MkdirAll(dbdir, 0755); err != nil {
+	if err := fs.MkdirAll(dbdir, 0755); err != nil {
 		t.Fatalf("%v", err)
 	}
-	defer os.RemoveAll(dbdir)
+	defer fs.RemoveAll(dbdir)
 	toKeep := "dir_to_keep"
-	if err := os.MkdirAll(path.Join(dbdir, toKeep), 0755); err != nil {
+	if err := fs.MkdirAll(fs.PathJoin(dbdir, toKeep), 0755); err != nil {
 		t.Fatalf("failed to create dir %v", err)
 	}
-	if err := os.MkdirAll(path.Join(dbdir, "d1"), 0755); err != nil {
+	if err := fs.MkdirAll(fs.PathJoin(dbdir, "d1"), 0755); err != nil {
 		t.Fatalf("failed to create dir %v", err)
 	}
-	if err := os.MkdirAll(path.Join(dbdir, "d2"), 0755); err != nil {
+	if err := fs.MkdirAll(fs.PathJoin(dbdir, "d2"), 0755); err != nil {
 		t.Fatalf("failed to create dir %v", err)
 	}
-	if err := saveCurrentDBDirName(dbdir, path.Join(dbdir, toKeep)); err != nil {
+	if err := saveCurrentDBDirName(dbdir, fs.PathJoin(dbdir, toKeep), fs); err != nil {
 		t.Fatalf("failed to save current file %v", err)
 	}
-	if err := replaceCurrentDBFile(dbdir); err != nil {
+	if err := replaceCurrentDBFile(dbdir, fs); err != nil {
 		t.Errorf("failed to rename the current db file %v", err)
 	}
-	if err := cleanupNodeDataDir(dbdir); err != nil {
+	if err := cleanupNodeDataDir(dbdir, fs); err != nil {
 		t.Errorf("cleanup failed %v", err)
 	}
 	tests := []struct {
@@ -205,7 +167,7 @@ func TestCleanupNodeDataDir(t *testing.T) {
 		{path.Join(dbdir, "d2"), false},
 	}
 	for idx, tt := range tests {
-		if _, err := os.Stat(tt.name); os.IsNotExist(err) {
+		if _, err := fs.Stat(tt.name); os.IsNotExist(err) {
 			if tt.exist {
 				t.Errorf("unexpected cleanup result %d", idx)
 			}
@@ -213,21 +175,25 @@ func TestCleanupNodeDataDir(t *testing.T) {
 	}
 }
 
-func removeAllDBDir() {
-	os.RemoveAll(testDBDirName)
+func removeAllDBDir(fs config.IFS) {
+	fs.RemoveAll(testDBDirName)
 }
 
 func runDiskKVTest(t *testing.T, f func(t *testing.T, odsm sm.IOnDiskStateMachine)) {
+	fs := dragonboat.GetTestFS()
 	clusterID := uint64(128)
 	nodeID := uint64(256)
-	removeAllDBDir()
-	defer removeAllDBDir()
+	removeAllDBDir(fs)
+	defer removeAllDBDir(fs)
 	odsm := NewDiskKVTest(clusterID, nodeID)
 	f(t, odsm)
 }
 
 func TestDiskKVCanBeOpened(t *testing.T) {
+	fs := dragonboat.GetTestFS()
 	tf := func(t *testing.T, odsm sm.IOnDiskStateMachine) {
+		defer odsm.Close()
+		odsm.(*DiskKVTest).SetTestFS(fs)
 		idx, err := odsm.Open(nil)
 		if err != nil {
 			t.Fatalf("failed to open %v", err)
@@ -239,13 +205,15 @@ func TestDiskKVCanBeOpened(t *testing.T) {
 		if err != nil {
 			t.Fatalf("lookup failed %v", err)
 		}
-		odsm.Close()
 	}
 	runDiskKVTest(t, tf)
 }
 
 func TestDiskKVCanBeUpdated(t *testing.T) {
+	fs := dragonboat.GetTestFS()
 	tf := func(t *testing.T, odsm sm.IOnDiskStateMachine) {
+		defer odsm.Close()
+		odsm.(*DiskKVTest).SetTestFS(fs)
 		idx, err := odsm.Open(nil)
 		if err != nil {
 			t.Fatalf("failed to open %v", err)
@@ -283,10 +251,7 @@ func TestDiskKVCanBeUpdated(t *testing.T) {
 		if err != nil {
 			t.Fatalf("lookup failed %v", err)
 		}
-		idx, err = strconv.ParseUint(string(result.([]byte)), 10, 64)
-		if err != nil {
-			t.Fatalf("failed to convert the index value %v", err)
-		}
+		idx = binary.LittleEndian.Uint64(result.([]byte))
 		if idx != 2 {
 			t.Errorf("last applied %d, want 2", idx)
 		}
@@ -297,17 +262,19 @@ func TestDiskKVCanBeUpdated(t *testing.T) {
 		if !bytes.Equal(result.([]byte), []byte("test-val1")) {
 			t.Errorf("value not set")
 		}
-		odsm.Close()
 	}
 	runDiskKVTest(t, tf)
 }
 
 func TestDiskKVSnapshot(t *testing.T) {
+	fs := dragonboat.GetTestFS()
 	tf := func(t *testing.T, odsm sm.IOnDiskStateMachine) {
+		odsm.(*DiskKVTest).SetTestFS(fs)
 		idx, err := odsm.Open(nil)
 		if err != nil {
 			t.Fatalf("failed to open %v", err)
 		}
+		defer odsm.Close()
 		if idx != 0 {
 			t.Fatalf("idx %d", idx)
 		}
@@ -374,6 +341,7 @@ func TestDiskKVSnapshot(t *testing.T) {
 		}
 		reader := bytes.NewBuffer(buf.Bytes())
 		odsm2 := NewDiskKVTest(1024, 1024)
+		odsm2.(*DiskKVTest).SetTestFS(fs)
 		idx, err = odsm2.Open(nil)
 		if err != nil {
 			t.Fatalf("failed to open %v", err)
