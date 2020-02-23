@@ -6,8 +6,8 @@ require (
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/protobuf v1.3.3
 	github.com/juju/ratelimit v1.0.2-0.20191002062651-f60b32039441 // indirect
-	github.com/lni/dragonboat/v3 v3.0.0-20200222083837-ab0d8af65b6a
-	github.com/lni/goutils v0.0.0-20200222081325-abff41629bcd
+	github.com/lni/dragonboat/v3 v3.0.0-20200223150841-b98019131a21
+	github.com/lni/goutils v0.0.0-20200223142840-ed28551955fe
 	golang.org/x/net v0.0.0-20190628185345-da137c7871d7
 	google.golang.org/grpc v1.22.0
 )
