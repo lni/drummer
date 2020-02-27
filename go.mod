@@ -2,7 +2,7 @@ module github.com/lni/drummer/v3
 
 require (
 	github.com/VictoriaMetrics/metrics v1.6.2 // indirect
-	github.com/cockroachdb/pebble v0.0.0-20200219202912-046831eaec09
+	github.com/cockroachdb/pebble v0.0.0-20200227052413-488fb5bfea76
 	github.com/gogo/protobuf v1.2.1
 	github.com/golang/protobuf v1.3.3
 	github.com/juju/ratelimit v1.0.2-0.20191002062651-f60b32039441 // indirect
