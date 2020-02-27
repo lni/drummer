@@ -1513,7 +1513,7 @@ func drummerMonkeyTesting(t *testing.T, appname string) {
 	setRandomPacketDropHook(drummerNodes, 0)
 
 	plog.Infof("all nodes restarted")
-	waitTimeSec = loopIntervalSecond * 18
+	waitTimeSec = loopIntervalSecond * 23
 	time.Sleep(time.Duration(waitTimeSec) * time.Second)
 	drummerCleaderChecked = false
 	for _, node := range drummerNodes {
