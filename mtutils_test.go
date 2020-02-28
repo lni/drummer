@@ -352,6 +352,24 @@ func (n *testNode) Start(dl *mtAddressList) {
 	}
 }
 
+func (n *testNode) compact() {
+	if n.nodeType == nodeTypeNodehost {
+		cid := rand.Uint64() % 128
+		nh := n.nh
+		for _, rn := range nh.Clusters() {
+			if rn.ClusterID() == cid {
+				plog.Infof("going to request a compaction for cluster %d", cid)
+				sop, err := nh.RequestCompaction(cid, rn.NodeID())
+				if err != nil {
+					plog.Panicf("failed to request compaction %v", err)
+				}
+				<-sop.CompletedC()
+				plog.Infof("cluster %d compaction completed", cid)
+			}
+		}
+	}
+}
+
 func (n *testNode) GetMultiClusterAndTick() (*multiCluster, uint64, error) {
 	n.MustBeDrummerNode()
 	sc, err := n.drummer.getSchedulerContext()
@@ -861,6 +879,14 @@ func tryWaitForStableNodes(nodes []*testNode, seconds uint64) bool {
 	return true
 }
 
+func compactNodes(nodes []*testNode) {
+	for _, node := range nodes {
+		if node.Running() {
+			node.compact()
+		}
+	}
+}
+
 func brutalMonkeyPlay(nodehosts []*testNode,
 	drummerNodes []*testNode, low int64, high int64) {
 	tt := rand.Uint64() % 3
@@ -889,6 +915,9 @@ func monkeyPlay(nodes []*testNode, low int64, high int64,
 			if node.next == 0 {
 				node.setNodeNext(low, high)
 				continue
+			}
+			if now%100 == 0 {
+				compactNodes(nodes)
 			}
 			if node.next > now {
 				continue
