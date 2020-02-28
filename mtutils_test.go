@@ -360,7 +360,10 @@ func (n *testNode) compact() {
 			if rn.ClusterID() == cid {
 				plog.Infof("going to request a compaction for cluster %d", cid)
 				sop, err := nh.RequestCompaction(cid, rn.NodeID())
-				if err != nil && err != dragonboat.ErrRejected {
+				if err == dragonboat.ErrRejected {
+					return
+				}
+				if err != nil {
 					plog.Panicf("failed to request compaction %v", err)
 				}
 				<-sop.CompletedC()
