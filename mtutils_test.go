@@ -1414,10 +1414,12 @@ func drummerMonkeyTesting(t *testing.T, appname string) {
 		if t.Failed() {
 			plog.Infof("test failed, going to save the monkey test dir")
 			saveMonkeyTestDir()
+			panic("core dump is required")
 		} else {
 			removeMonkeyTestDir(dragonboat.GetTestFS())
 		}
 	}()
+	plog.Infof("test pid %d", os.Getpid())
 	plog.Infof("snapshot disabled in monkey test %t, less snapshot %t",
 		snapshotDisabledInRaftConfig(), lessSnapshotTest())
 	dl := getDrummerMonkeyTestAddrList()

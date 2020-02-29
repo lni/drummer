@@ -45,7 +45,7 @@ do
   echo "numa settings $numacmd" > numa.txt
   echo "iteration $i" > progress.txt
   settings="-test.timeout 2450s -test.v -test.run $TESTNAME"
-  DRUMMERMTPORT=BASEPORT $numacmd ./drummer-monkey-testing $settings > drummer-mt-out.txt 2>&1
+  GOTRACEBACK=crash DRUMMERMTPORT=BASEPORT $numacmd ./drummer-monkey-testing $settings > drummer-mt-out.txt 2>&1
   if [ $? -ne 0 ]; then
     mv drummer-mt-out.txt $fn
     mv drummer_mt_pwd_safe_to_delete drummer_mt_pwd_safe_to_delete_err_$i
