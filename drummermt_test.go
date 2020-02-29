@@ -28,16 +28,24 @@ import (
 )
 
 func runDrummerMonkeyTest(t *testing.T, appname string) {
-	runtime.GOMAXPROCS(10)
 	rand.Seed(int64(os.Getpid()))
+	maxprocs := rand.Uint64()%8 + 3            // [3, 10]
+	snapshotWorkerCount := rand.Uint64()%8 + 1 // [1, 8]
+	workerCount := rand.Uint64()%4 + 1         // [1, 4]
+	queueSz := rand.Uint64()%33 + 32           // [32, 64]
+	plog.Infof("maxprocs %d", maxprocs)
+	plog.Infof("snapshot worker count %d, worker count %d",
+		snapshotWorkerCount, workerCount)
+	plog.Infof("queue size: %d", queueSz)
+	runtime.GOMAXPROCS(int(maxprocs))
+	dragonboat.SetSnapshotWorkerCount(snapshotWorkerCount)
+	dragonboat.SetWorkerCount(workerCount)
+	dragonboat.SetTaskWorkerCount(workerCount)
+	dragonboat.SetReceiveQueueLen(queueSz)
 	dragonboat.SetPendingProposalShards(2)
 	dragonboat.SetTaskBatchSize(8)
-	dragonboat.SetSnapshotWorkerCount(rand.Uint64()%4 + 1)
-	dragonboat.SetWorkerCount(4)
-	dragonboat.SetTaskWorkerCount(4)
 	dragonboat.SetIncomingProposalsMaxLen(64)
 	dragonboat.SetIncomingReadIndexMaxLen(64)
-	dragonboat.SetReceiveQueueLen(64)
 	dragonboat.ApplyMonkeySettings()
 	logger.GetLogger("dragonboat").SetLevel(logger.DEBUG)
 	logger.GetLogger("transport").SetLevel(logger.DEBUG)
