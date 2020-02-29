@@ -362,12 +362,13 @@ func (dc *DrummerClient) handleAddDeleteRequest(ctx context.Context,
 
 func getConfig(req pb.NodeHostRequest) config.Config {
 	return config.Config{
-		ElectionRTT:        req.Config.ElectionRTT,
-		HeartbeatRTT:       req.Config.HeartbeatRTT,
-		CheckQuorum:        req.Config.CheckQuorum,
-		SnapshotEntries:    req.Config.SnapshotEntries,
-		CompactionOverhead: req.Config.CompactionOverhead,
-		MaxInMemLogSize:    req.Config.MaxInMemLogSize,
+		DisableAutoCompactions: true,
+		ElectionRTT:            req.Config.ElectionRTT,
+		HeartbeatRTT:           req.Config.HeartbeatRTT,
+		CheckQuorum:            req.Config.CheckQuorum,
+		SnapshotEntries:        req.Config.SnapshotEntries,
+		CompactionOverhead:     req.Config.CompactionOverhead,
+		MaxInMemLogSize:        req.Config.MaxInMemLogSize,
 	}
 }
 
