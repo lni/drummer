@@ -293,6 +293,12 @@ func (n *testNode) Stop() {
 	if n.stopped {
 		panic("already stopped")
 	}
+	memfs, ok := n.fs.(*dragonboat.MemFS)
+	if ok {
+		plog.Infof("SetIgnoreSyncs called")
+		memfs.SetIgnoreSyncs(true)
+		n.nh.PartitionNode()
+	}
 	n.stopped = true
 	done := uint32(0)
 	go func() {
@@ -341,6 +347,8 @@ func (n *testNode) Start(dl *mtAddressList) {
 	memfs, ok := n.fs.(*dragonboat.MemFS)
 	if ok {
 		plog.Infof("ResetToSyncedState called")
+		n.nh.RestorePartitionedNode()
+		memfs.SetIgnoreSyncs(false)
 		memfs.ResetToSyncedState()
 	}
 	if n.nodeType == nodeTypeDrummer {
