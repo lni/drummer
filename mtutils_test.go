@@ -347,7 +347,9 @@ func (n *testNode) Start(dl *mtAddressList) {
 	memfs, ok := n.fs.(*dragonboat.MemFS)
 	if ok {
 		plog.Infof("ResetToSyncedState called")
-		n.nh.RestorePartitionedNode()
+		if n.nh != nil {
+			n.nh.RestorePartitionedNode()
+		}
 		memfs.SetIgnoreSyncs(false)
 		memfs.ResetToSyncedState()
 	}
