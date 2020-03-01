@@ -1108,33 +1108,28 @@ func submitMultipleTestClusters(count uint64,
 
 func checkClustersAreAccessible(t *testing.T,
 	clusterCount uint64, dl *mtAddressList) {
+	synced := make(map[uint64]struct{})
 	count := 0
-	for {
-		notSync := make(map[uint64]bool)
+	for count < 100 {
 		for clusterID := uint64(1); clusterID <= clusterCount; clusterID++ {
-			clusterOk := false
+			_, ok := synced[clusterID]
+			if ok {
+				continue
+			}
 			plog.Infof("checking cluster availability for %d", clusterID)
 			ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
-			if !makeMonkeyTestRequests(ctx, clusterID, dl, false) {
-				notSync[clusterID] = true
-			} else {
-				clusterOk = true
+			if makeMonkeyTestRequests(ctx, clusterID, dl, false) {
+				synced[clusterID] = struct{}{}
 			}
 			cancel()
-			plog.Infof("cluster availability check for %d result: %t",
-				clusterID, clusterOk)
 		}
-		if len(notSync) > 0 {
-			count++
-			if count > 10 {
-				t.Fatalf("failed to access clusters %v", notSync)
-			} else {
-				time.Sleep(clusterCheckWaitSecond)
-			}
-		} else {
+		if uint64(len(synced)) == clusterCount {
 			return
 		}
+		time.Sleep(time.Second)
+		count++
 	}
+	t.Fatalf("%d clusters are not accessible", clusterCount-uint64(len(synced)))
 }
 
 func getRequestAddress(ctx context.Context,
