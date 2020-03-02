@@ -296,8 +296,9 @@ func (n *testNode) Stop() {
 	memfs, ok := n.fs.(*dragonboat.MemFS)
 	if ok {
 		plog.Infof("SetIgnoreSyncs called")
-		memfs.SetIgnoreSyncs(true)
 		n.nh.PartitionNode()
+		memfs.SetIgnoreSyncs(true)
+		time.Sleep(time.Second)
 	}
 	n.stopped = true
 	done := uint32(0)
