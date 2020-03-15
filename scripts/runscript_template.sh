@@ -45,7 +45,8 @@ do
   echo "numa settings $numacmd" > numa.txt
   echo "iteration $i" > progress.txt
   settings="-test.timeout 2450s -test.v -test.run $TESTNAME"
-  GOTRACEBACK=crash DRUMMERMTPORT=BASEPORT $numacmd ./drummer-monkey-testing $settings > drummer-mt-out.txt 2>&1
+  GOTRACEBACK=crash SWITCHTESTDB=SWITCHDB DRUMMERMTPORT=BASEPORT $numacmd \
+    ./drummer-monkey-testing  $settings > drummer-mt-out.txt 2>&1
   if [ $? -ne 0 ]; then
     mv drummer-mt-out.txt $fn
     mv drummer_mt_pwd_safe_to_delete drummer_mt_pwd_safe_to_delete_err_$i
@@ -62,7 +63,5 @@ do
   jepsenfn="../lcmlog/drummer-lcm-$i-$testno.jepsen" 
   cp drummer-lcm.edn $ednfn
   cp drummer-lcm.jepsen $jepsenfn
-  rm -f external-*.data
-  rm -rf test_rocksdb_db_safe_to_delete
+  rm -rf test_rocksdb_db_safe_to_delete external-*.data
 done
-

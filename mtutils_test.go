@@ -40,6 +40,7 @@ import (
 
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
+	"github.com/lni/dragonboat/v3/plugin/pebble"
 	"github.com/lni/dragonboat/v3/raftpb"
 	"github.com/lni/drummer/v3/client"
 	pb "github.com/lni/drummer/v3/drummerpb"
@@ -154,6 +155,18 @@ func newDrummerMonkeyTestAddr(base uint64) *mtAddressList {
 	return d
 }
 
+func getSwitchDB() bool {
+	v := os.Getenv("SWITCHTESTDB")
+	if len(v) > 0 {
+		iv, err := strconv.Atoi(v)
+		if err != nil {
+			panic(err)
+		}
+		return iv == 1
+	}
+	return false
+}
+
 func getTestAddrList() *mtAddressList {
 	base := defaultBasePort
 	v := os.Getenv("DRUMMERMTPORT")
@@ -231,6 +244,8 @@ type testNode struct {
 	next               int64
 	stopper            *syncutil.Stopper
 	mutualTLS          bool
+	switchDB           bool
+	dbCycle            uint64
 	fs                 config.IFS
 }
 
@@ -362,6 +377,7 @@ func (n *testNode) Stop() {
 
 func (n *testNode) Start(dl *mtAddressList) {
 	n.tryAllowSync()
+	n.dbCycle++
 	if n.nodeType == nodeTypeDrummer {
 		n.startDrummerNode(dl)
 	} else if n.nodeType == nodeTypeNodehost {
@@ -435,6 +451,10 @@ func (n *testNode) setNodeNext(low int64, high int64) {
 	n.next = time.Now().UnixNano() + v
 }
 
+func (n *testNode) switchToPebble() bool {
+	return n.switchDB && n.dbCycle%2 == 0
+}
+
 func (n *testNode) startDrummerNode(dl *mtAddressList) {
 	if n.nodeType != nodeTypeDrummer {
 		panic("trying to start a drummer on a non-drummer node")
@@ -449,6 +469,9 @@ func (n *testNode) startDrummerNode(dl *mtAddressList) {
 	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
 	config.RaftAddress = dl.addressList[n.listIndex]
 	config.FS = n.fs
+	if n.switchToPebble() {
+		config.LogDBFactory = pebble.NewLogDB
+	}
 	nh, err := dragonboat.NewNodeHost(config)
 	if err != nil {
 		panic(err)
@@ -486,6 +509,9 @@ func (n *testNode) startNodehostNode(dl *mtAddressList) {
 	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
 	config.RaftAddress = dl.nodehostAddressList[n.listIndex]
 	config.FS = n.fs
+	if n.switchToPebble() {
+		config.LogDBFactory = pebble.NewLogDB
+	}
 	apiAddress := dl.nodehostAPIAddressList[n.listIndex]
 	nh, err := dragonboat.NewNodeHost(config)
 	if err != nil {
@@ -791,6 +817,7 @@ func createTestNodeLists(dl *mtAddressList) ([]*testNode, []*testNode) {
 			partitionStartTime: make(map[uint64]struct{}),
 			partitionEndTime:   make(map[uint64]struct{}),
 			fs:                 fs,
+			switchDB:           getSwitchDB(),
 		}
 		removeMonkeyTestDir(fs)
 	}
@@ -804,6 +831,7 @@ func createTestNodeLists(dl *mtAddressList) ([]*testNode, []*testNode) {
 			partitionStartTime: make(map[uint64]struct{}),
 			partitionEndTime:   make(map[uint64]struct{}),
 			fs:                 fs,
+			switchDB:           getSwitchDB(),
 		}
 		removeMonkeyTestDir(fs)
 	}
