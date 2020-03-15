@@ -172,7 +172,7 @@ func (s *scheduler) getLaunchRequests(clusters []*pb.Cluster,
 // Repair clusters related
 //
 
-func (s *scheduler) repairClusters(restored map[uint64]struct{}) ([]pb.NodeHostRequest, error) {
+func (s *scheduler) repair(restored map[uint64]struct{}) ([]pb.NodeHostRequest, error) {
 	plog.Infof("toRepair sz: %d", len(s.clustersToRepair))
 	result := make([]pb.NodeHostRequest, 0)
 	for _, cc := range s.clustersToRepair {

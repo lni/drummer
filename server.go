@@ -1,4 +1,4 @@
-// Copyright 2017-2019 Lei Ni (nilei81@gmail.com) and other Dragonboat authors.
+// Copyright 2017-2019 Lei Ni (nilei81@gmail.com).
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -323,22 +323,6 @@ func (s *server) setDeploymentID(ctx context.Context,
 	}
 	plog.Infof("DeploymentID returned %d", respDid)
 	return respDid, nil
-}
-
-func (s *server) getRegions(ctx context.Context) (*pb.Regions, error) {
-	resp, err := s.lookupKV(ctx, regionsKey)
-	if err != nil {
-		return nil, err
-	}
-	if len(resp.KvResult.Value) == 0 {
-		return nil, errors.New("regions not set")
-	}
-	var r pb.Regions
-	err = r.Unmarshal([]byte(resp.KvResult.Value))
-	if err != nil {
-		panic(err)
-	}
-	return &r, nil
 }
 
 func (s *server) getElectionInfo(ctx context.Context) (*pb.KV, error) {

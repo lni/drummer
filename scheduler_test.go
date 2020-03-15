@@ -1,4 +1,4 @@
-// Copyright 2017-2019 Lei Ni (nilei81@gmail.com) and other Dragonboat authors.
+// Copyright 2017-2019 Lei Ni (nilei81@gmail.com).
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build !dragonboat_slowtest
 // +build !dragonboat_monkeytest
 
 package drummer
@@ -285,7 +284,7 @@ func TestSchedulerAddRequestDuringRepair(t *testing.T) {
 		t.Errorf("len(s.clustersToRepair)=%d, want 1", len(s.clustersToRepair))
 	}
 	ignoreClusters := make(map[uint64]struct{})
-	reqs, err := s.repairClusters(ignoreClusters)
+	reqs, err := s.repair(ignoreClusters)
 	if err != nil {
 		t.Errorf("error not expected")
 	}
@@ -325,7 +324,7 @@ func TestSchedulerCreateRequestDuringRepair(t *testing.T) {
 		t.Errorf("len(s.clustersToRepair)=%d, want 1", len(s.clustersToRepair))
 	}
 	ignoreClusters := make(map[uint64]struct{})
-	reqs, err := s.repairClusters(ignoreClusters)
+	reqs, err := s.repair(ignoreClusters)
 	if err != nil {
 		t.Errorf("error not expected")
 	}
@@ -380,7 +379,7 @@ func TestSchedulerDeleteRequestDuringRepair(t *testing.T) {
 		t.Errorf("len(s.clustersToRepair)=%d, want 1", len(s.clustersToRepair))
 	}
 	ignoreClusters := make(map[uint64]struct{})
-	reqs, err := s.repairClusters(ignoreClusters)
+	reqs, err := s.repair(ignoreClusters)
 	if err != nil {
 		t.Errorf("error not expected")
 	}

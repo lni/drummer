@@ -1,4 +1,4 @@
-// Copyright 2017-2019 Lei Ni (nilei81@gmail.com) and other Dragonboat authors.
+// Copyright 2017-2019 Lei Ni (nilei81@gmail.com).
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,10 +20,10 @@ import (
 	"sync"
 	"time"
 
-	pb "github.com/lni/drummer/v3/drummerpb"
-	serverPkg "github.com/lni/drummer/v3/server"
 	"github.com/lni/goutils/random"
 	"github.com/lni/goutils/syncutil"
+
+	pb "github.com/lni/drummer/v3/drummerpb"
 )
 
 const (
@@ -152,7 +152,7 @@ func (d *electionManager) workerMain(ctx context.Context) {
 		}
 		return false
 	}
-	serverPkg.RunTicker(td, tf, ctx.Done(), d.stopper.ShouldStop())
+	RunTicker(td, tf, ctx.Done(), d.stopper.ShouldStop())
 }
 
 func (d *electionManager) leaderMain(ctx context.Context, tick uint64) {

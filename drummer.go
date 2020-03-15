@@ -36,7 +36,6 @@ import (
 	"github.com/lni/dragonboat/v3/client"
 	"github.com/lni/dragonboat/v3/logger"
 	pb "github.com/lni/drummer/v3/drummerpb"
-	serverPkg "github.com/lni/drummer/v3/server"
 	"github.com/lni/drummer/v3/settings"
 	"github.com/lni/goutils/envutil"
 	"github.com/lni/goutils/netutil"
@@ -419,7 +418,7 @@ func (d *Drummer) drummerMain() {
 		cancel()
 		return false
 	}
-	serverPkg.RunTicker(td, tf, d.stopper.ShouldStop(), nil)
+	RunTicker(td, tf, d.stopper.ShouldStop(), nil)
 	plog.Debugf("drummer's main loop stopped, nh addr: %s", d.nh.RaftAddress())
 }
 
@@ -476,7 +475,7 @@ func (d *Drummer) maintainClusters() ([]pb.NodeHostRequest, error) {
 	}
 	requests = append(requests, reqs...)
 	// repair clusters?
-	reqs, err = d.scheduler.repairClusters(restoredClusters)
+	reqs, err = d.scheduler.repair(restoredClusters)
 	if err != nil {
 		return nil, err
 	}
@@ -499,5 +498,67 @@ func getDefaultClusterConfig() pb.Config {
 		CheckQuorum:        true,
 		CompactionOverhead: 10000,
 		SnapshotEntries:    10000,
+	}
+}
+
+// TickerFunc is type of the function that will be called by the RunTicker
+// function after each tick. The returned boolean value indicates whether the
+// ticker should stop.
+type TickerFunc func() bool
+
+// RunTicker runs a ticker at the specified interval, the provided TickerFunc
+// will be called after each tick. The ticker will be stopped when the
+// TickerFunc return a true value or when any of the two specified stop
+// channels is signalled.
+func RunTicker(td time.Duration,
+	tf TickerFunc, stopc1 <-chan struct{}, stopc2 <-chan struct{}) {
+	tms := td.Nanoseconds() / 1000000
+	if tms == 0 {
+		panic("invalid duration")
+	}
+	if tms == 1 {
+		run1MSTicker(tf, stopc1, stopc2)
+	} else {
+		runLFTicker(td, tf, stopc1, stopc2)
+	}
+}
+
+func run1MSTicker(tf TickerFunc,
+	stopc1 <-chan struct{}, stopc2 <-chan struct{}) {
+	ticker := time.NewTicker(time.Millisecond)
+	defer ticker.Stop()
+	count := 0
+	for range ticker.C {
+		count++
+		if count%10 == 0 {
+			select {
+			case <-stopc1:
+				return
+			case <-stopc2:
+				return
+			default:
+			}
+		}
+		if tf() {
+			return
+		}
+	}
+}
+
+func runLFTicker(td time.Duration,
+	tf TickerFunc, stopc1 <-chan struct{}, stopc2 <-chan struct{}) {
+	ticker := time.NewTicker(td)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if tf() {
+				return
+			}
+		case <-stopc1:
+			return
+		case <-stopc2:
+			return
+		}
 	}
 }
