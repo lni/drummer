@@ -27,7 +27,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/golang/protobuf/proto"
 	sm "github.com/lni/dragonboat/v3/statemachine"
 	"github.com/lni/drummer/v3/kvpb"
 )
@@ -88,8 +87,7 @@ func (s *ConcurrentKVTest) Lookup(key interface{}) (interface{}, error) {
 // Update updates the object using the specified committed raft entry.
 func (s *ConcurrentKVTest) Update(ents []sm.Entry) ([]sm.Entry, error) {
 	dataKv := &kvpb.PBKV{}
-	err := proto.Unmarshal(ents[0].Cmd, dataKv)
-	if err != nil {
+	if err := dataKv.Unmarshal(ents[0].Cmd); err != nil {
 		panic(err)
 	}
 	key := dataKv.GetKey()

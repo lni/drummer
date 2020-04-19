@@ -22,7 +22,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/lni/drummer/v3/client"
 	kvpb "github.com/lni/drummer/v3/kvpb"
 	mr "github.com/lni/drummer/v3/multiraftpb"
@@ -167,7 +166,7 @@ func (p *process) write(addr string, clusterID uint64, value uint64) error {
 		Key: lcmKey,
 		Val: v,
 	}
-	data, err := proto.Marshal(kv)
+	data, err := kv.Marshal()
 	if err != nil {
 		panic(err)
 	}

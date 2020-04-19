@@ -33,7 +33,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/lni/goutils/logutil"
 	"github.com/lni/goutils/random"
 	"github.com/lni/goutils/syncutil"
@@ -1195,7 +1194,7 @@ func getMonkeyTestClients(ctx context.Context, p *client.Pool, writeAddress stri
 
 func makeWriteRequest(ctx context.Context,
 	client mr.NodehostAPIClient, clusterID uint64, kv *kvpb.PBKV) bool {
-	data, err := proto.Marshal(kv)
+	data, err := kv.Marshal()
 	if err != nil {
 		panic(err)
 	}
