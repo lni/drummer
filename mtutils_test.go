@@ -223,6 +223,7 @@ func getTestConfig() (config.Config, config.NodeHostConfig) {
 		RTTMillisecond:        50,
 		LogDBFactory:          getLogDBFactory(),
 		SystemTickerPrecision: 10 * time.Millisecond,
+		NotifyCommit:          true,
 	}
 	return rc, nhc
 }
