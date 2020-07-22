@@ -224,6 +224,10 @@ func getTestConfig() (config.Config, config.NodeHostConfig) {
 		LogDBFactory:          getLogDBFactory(),
 		SystemTickerPrecision: 10 * time.Millisecond,
 		NotifyCommit:          true,
+		Expert: config.ExpertConfig{
+			ExecShards:  4,
+			LogDBShards: 1,
+		},
 	}
 	return rc, nhc
 }

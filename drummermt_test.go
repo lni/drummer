@@ -39,7 +39,6 @@ func runDrummerMonkeyTest(t *testing.T, appname string) {
 	plog.Infof("queue size: %d", queueSz)
 	runtime.GOMAXPROCS(int(maxprocs))
 	dragonboat.SetSnapshotWorkerCount(snapshotWorkerCount)
-	dragonboat.SetStepWorkerCount(workerCount)
 	dragonboat.SetApplyWorkerCount(workerCount)
 	dragonboat.SetReceiveQueueLen(queueSz)
 	dragonboat.SetPendingProposalShards(2)
