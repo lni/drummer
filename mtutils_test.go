@@ -39,7 +39,6 @@ import (
 
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
-	"github.com/lni/dragonboat/v3/plugin/rocksdb"
 	"github.com/lni/dragonboat/v3/raftpb"
 	"github.com/lni/drummer/v3/client"
 	pb "github.com/lni/drummer/v3/drummerpb"
@@ -473,9 +472,6 @@ func (n *testNode) startDrummerNode(dl *mtAddressList) {
 	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
 	config.RaftAddress = dl.addressList[n.listIndex]
 	config.FS = n.fs
-	if n.switchToRocksDB() {
-		config.LogDBFactory = rocksdb.NewLogDB
-	}
 	nh, err := dragonboat.NewNodeHost(config)
 	if err != nil {
 		panic(err)
@@ -513,9 +509,6 @@ func (n *testNode) startNodehostNode(dl *mtAddressList) {
 	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
 	config.RaftAddress = dl.nodehostAddressList[n.listIndex]
 	config.FS = n.fs
-	if n.switchToRocksDB() {
-		config.LogDBFactory = rocksdb.NewLogDB
-	}
 	apiAddress := dl.nodehostAPIAddressList[n.listIndex]
 	nh, err := dragonboat.NewNodeHost(config)
 	if err != nil {

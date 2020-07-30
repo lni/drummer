@@ -51,11 +51,6 @@ seq=`seq 1 $NOJ`
 
 deploy()
 {
-  if [[ -z "${SWITCH_DB_TEST}" ]]; then
-    switchsed="sed -e s/SWITCHDB/0/g"
-  else
-    switchsed="sed -e s/SWITCHDB/1/g"
-  fi
   if [[ -z "${ONDISK_TEST}" ]]; then
     smtype="in memory"
     testsed="sed -e s/SELECTEDTEST/TestClusterCanSurviveDrummerMonkeyPlay/g"
@@ -96,9 +91,8 @@ deploy()
     base=$((base+incv))
     sedcmd="sed -e s/BASEPORT/${base}/g"
     cat runscript_template.sh | ${testsed} > $DIR/runscrupt.tmp1
-    cat $DIR/runscrupt.tmp1 | ${switchsed} > $DIR/runscrupt.tmp2
-    cat $DIR/runscrupt.tmp2 | ${sedcmd} > $DIR/$RUNTEST
-    rm $DIR/runscrupt.tmp1 $DIR/runscrupt.tmp2
+    cat $DIR/runscrupt.tmp1 | ${sedcmd} > $DIR/$RUNTEST
+    rm $DIR/runscrupt.tmp1
     chmod +x $DIR/$RUNTEST
   done
   return
