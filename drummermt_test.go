@@ -46,8 +46,13 @@ func runDrummerMonkeyTest(t *testing.T, appname string) {
 	dragonboat.SetIncomingProposalsMaxLen(64)
 	dragonboat.SetIncomingReadIndexMaxLen(64)
 	dragonboat.ApplyMonkeySettings()
-	logger.GetLogger("dragonboat").SetLevel(logger.DEBUG)
-	logger.GetLogger("transport").SetLevel(logger.DEBUG)
+	logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
+	logger.GetLogger("transport").SetLevel(logger.ERROR)
+	logger.GetLogger("raft").SetLevel(logger.ERROR)
+	logger.GetLogger("rsm").SetLevel(logger.ERROR)
+	logger.GetLogger("logdb").SetLevel(logger.ERROR)
+	logger.GetLogger("drummer").SetLevel(logger.ERROR)
+	logger.GetLogger("drummer/client").SetLevel(logger.ERROR)
 	drummerMonkeyTesting(t, appname)
 }
 

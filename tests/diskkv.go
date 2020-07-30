@@ -441,7 +441,6 @@ func NewDiskKVTest(clusterID uint64, nodeID uint64) sm.IOnDiskStateMachine {
 		clusterID: clusterID,
 		nodeID:    nodeID,
 	}
-	fmt.Printf("[DKVE] %s is being created\n", d.id())
 	return d
 }
 
@@ -453,7 +452,6 @@ func (d *DiskKVTest) id() string {
 func (d *DiskKVTest) queryAppliedIndex(db *pebbledb) (uint64, error) {
 	val, closer, err := db.db.Get([]byte(appliedIndexKey))
 	if err != nil && err != pebble.ErrNotFound {
-		fmt.Printf("[DKVE] %s failed to query applied index\n", d.id())
 		return 0, err
 	}
 	defer func() {
@@ -462,7 +460,6 @@ func (d *DiskKVTest) queryAppliedIndex(db *pebbledb) (uint64, error) {
 		}
 	}()
 	if len(val) == 0 {
-		fmt.Printf("[DKVE] %s does not have applied index stored yet\n", d.id())
 		return 0, nil
 	}
 	return binary.LittleEndian.Uint64(val), nil
@@ -478,7 +475,6 @@ func (d *DiskKVTest) SetTestFS(fs config.IFS) {
 
 // Open opens the state machine.
 func (d *DiskKVTest) Open(stopc <-chan struct{}) (uint64, error) {
-	fmt.Printf("[DKVE] %s is being opened\n", d.id())
 	generateRandomDelay()
 	if d.fs == nil {
 		panic("d.fs not set")
@@ -505,9 +501,7 @@ func (d *DiskKVTest) Open(stopc <-chan struct{}) (uint64, error) {
 				panic("db dir unexpectedly deleted")
 			}
 		}
-		fmt.Printf("[DKVE] %s being re-opened at %s\n", d.id(), dbdir)
 	} else {
-		fmt.Printf("[DKVE] %s doing a new run\n", d.id())
 		dbdir = getNewRandomDBDirName(dir, d.fs)
 		if err := saveCurrentDBDirName(dir, dbdir, d.fs); err != nil {
 			return 0, err
@@ -516,19 +510,15 @@ func (d *DiskKVTest) Open(stopc <-chan struct{}) (uint64, error) {
 			return 0, err
 		}
 	}
-	fmt.Printf("[DKVE] %s going to create db at %s\n", d.id(), dbdir)
 	db, err := createDB(dbdir, d.fs)
 	if err != nil {
-		fmt.Printf("[DKVE] %s failed to create db\n", d.id())
 		return 0, err
 	}
-	fmt.Printf("[DKVE] %s returned from create db\n", d.id())
 	atomic.SwapPointer(&d.db, unsafe.Pointer(db))
 	appliedIndex, err := d.queryAppliedIndex(db)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("[DKVE] %s opened its disk sm, index %d\n", d.id(), appliedIndex)
 	d.lastApplied = appliedIndex
 	return appliedIndex, nil
 }
@@ -574,13 +564,10 @@ func (d *DiskKVTest) Update(ents []sm.Entry) ([]sm.Entry, error) {
 	idx := make([]byte, 8)
 	binary.LittleEndian.PutUint64(idx, ents[len(ents)-1].Index)
 	wb.Set([]byte(appliedIndexKey), idx, db.syncwo)
-	fmt.Printf("[DKVE] %s applied index recorded as %d\n", d.id(), ents[len(ents)-1].Index)
 	if err := db.db.Apply(wb, db.syncwo); err != nil {
 		return nil, err
 	}
 	if d.lastApplied >= ents[len(ents)-1].Index {
-		fmt.Printf("[DKVE] %s last applied not moving forward %d,%d\n",
-			d.id(), ents[len(ents)-1].Index, d.lastApplied)
 		panic("lastApplied not moving forward")
 	}
 	d.lastApplied = ents[len(ents)-1].Index
@@ -650,17 +637,12 @@ func (d *DiskKVTest) saveToWriter(db *pebbledb,
 		return strings.Compare(values[i].Key, values[j].Key) < 0
 	})
 	count := uint64(len(values))
-	fmt.Printf("[DKVE] %s have %d pairs of KV\n", d.id(), count)
 	sz := make([]byte, 8)
 	binary.LittleEndian.PutUint64(sz, count)
 	if _, err := w.Write(sz); err != nil {
 		return err
 	}
 	for _, dataKv := range values {
-		if dataKv.Key == appliedIndexKey {
-			idx := binary.LittleEndian.Uint64([]byte(dataKv.Val))
-			fmt.Printf("[DKVE] %s saving appliedIndexKey as %d\n", d.id(), idx)
-		}
 		data, err := dataKv.Marshal()
 		if err != nil {
 			panic(err)
@@ -743,7 +725,6 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 	if err != nil {
 		return err
 	}
-	fmt.Printf("[DKVE] %s is creating a tmp db at %s\n", d.id(), dbdir)
 	db, err := createDB(dbdir, d.fs)
 	if err != nil {
 		return err
@@ -753,7 +734,6 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 		return err
 	}
 	total := binary.LittleEndian.Uint64(sz)
-	fmt.Printf("[DKVE] %s recovering from a snapshot with %d pairs of KV\n", d.id(), total)
 	wb := db.db.NewBatch()
 	defer wb.Close()
 	for i := uint64(0); i < total; i++ {
@@ -769,13 +749,6 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 		if err := dataKv.Unmarshal(data); err != nil {
 			panic(err)
 		}
-		if dataKv.Key == appliedIndexKey {
-			v := binary.LittleEndian.Uint64([]byte(dataKv.Val))
-			if err != nil {
-				panic(err)
-			}
-			fmt.Printf("[DKVE] %s recovering appliedIndexKey to %d\n", d.id(), v)
-		}
 		wb.Set([]byte(dataKv.Key), []byte(dataKv.Val), db.syncwo)
 	}
 	if err := db.db.Apply(wb, db.syncwo); err != nil {
@@ -787,7 +760,6 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 	if err := replaceCurrentDBFile(dir, d.fs); err != nil {
 		return err
 	}
-	fmt.Printf("[DKVE] %s replaced db %s with %s\n", d.id(), oldDirName, dbdir)
 	newLastApplied, err := d.queryAppliedIndex(db)
 	if err != nil {
 		panic(err)
@@ -797,8 +769,6 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 	// that never reached the SM and thus never moved the last applied index
 	// in the SM snapshot.
 	if d.lastApplied > newLastApplied {
-		fmt.Printf("[DKVE] %s last applied in snapshot not moving forward %d,%d\n",
-			d.id(), d.lastApplied, newLastApplied)
 		panic("last applied not moving forward")
 	}
 	d.lastApplied = newLastApplied
@@ -806,7 +776,6 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 	if old != nil {
 		old.close()
 	}
-	fmt.Printf("[DKVE] %s to delete olddb at %s\n", d.id(), oldDirName)
 	parent := d.fs.PathDir(oldDirName)
 	if err := d.fs.RemoveAll(oldDirName); err != nil {
 		return err
@@ -816,7 +785,6 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 
 // Close closes the state machine.
 func (d *DiskKVTest) Close() error {
-	fmt.Printf("[DKVE] %s called close\n", d.id())
 	db := (*pebbledb)(atomic.SwapPointer(&d.db, unsafe.Pointer(nil)))
 	if db != nil {
 		d.closed = true
@@ -831,7 +799,6 @@ func (d *DiskKVTest) Close() error {
 
 // GetHash returns a hash value representing the state of the state machine.
 func (d *DiskKVTest) GetHash() (uint64, error) {
-	fmt.Printf("[DKVE] %s called GetHash\n", d.id())
 	h := md5.New()
 	db := (*pebbledb)(atomic.LoadPointer(&d.db))
 	ss := db.db.NewSnapshot()
