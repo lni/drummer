@@ -412,7 +412,6 @@ func cleanupNodeDataDir(dir string, fs config.IFS) error {
 		if !fi.IsDir() {
 			continue
 		}
-		fmt.Printf("dbdir %s, fi.name %s, dir %s\n", dbdir, fi.Name(), dir)
 		toDelete := fs.PathJoin(dir, fi.Name())
 		if toDelete != dbdir {
 			fmt.Printf("removing %s\n", toDelete)
