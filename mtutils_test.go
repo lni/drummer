@@ -220,7 +220,6 @@ func getTestConfig() (config.Config, config.NodeHostConfig) {
 		WALDir:                "drummermt",
 		NodeHostDir:           "drummermt",
 		RTTMillisecond:        50,
-		LogDBFactory:          getLogDBFactory(),
 		SystemTickerPrecision: 10 * time.Millisecond,
 		NotifyCommit:          true,
 		Expert: config.ExpertConfig{
