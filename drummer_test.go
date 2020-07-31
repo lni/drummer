@@ -65,9 +65,3 @@ func TestConcurrentClusterCanSurviveDrummerMonkeyPlay(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	runDrummerMonkeyTest(t, "concurrentkv")
 }
-
-/*
-func TestCPPKVCanSurviveDrummerMonkeyPlay(t *testing.T) {
-	defer leaktest.AfterTest(t)()
-	runDrummerMonkeyTest(t, "cpp-cppkvtest")
-}*/
