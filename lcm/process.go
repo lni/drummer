@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/lni/drummer/v3/client"
-	kvpb "github.com/lni/drummer/v3/kvpb"
+	"github.com/lni/drummer/v3/kv"
 	mr "github.com/lni/drummer/v3/multiraftpb"
 )
 
@@ -162,11 +162,11 @@ func (p *process) write(addr string, clusterID uint64, value uint64) error {
 		return err
 	}
 	v := p.getValue(value)
-	kv := &kvpb.PBKV{
+	kv := &kv.KV{
 		Key: lcmKey,
 		Val: v,
 	}
-	data, err := kv.Marshal()
+	data, err := kv.MarshalBinary()
 	if err != nil {
 		panic(err)
 	}

@@ -42,7 +42,7 @@ import (
 	"github.com/lni/dragonboat/v3/raftpb"
 	"github.com/lni/drummer/v3/client"
 	pb "github.com/lni/drummer/v3/drummerpb"
-	kvpb "github.com/lni/drummer/v3/kvpb"
+	"github.com/lni/drummer/v3/kv"
 	"github.com/lni/drummer/v3/lcm"
 	mr "github.com/lni/drummer/v3/multiraftpb"
 )
@@ -1191,8 +1191,8 @@ func getMonkeyTestClients(ctx context.Context, p *client.Pool, writeAddress stri
 }
 
 func makeWriteRequest(ctx context.Context,
-	client mr.NodehostAPIClient, clusterID uint64, kv *kvpb.PBKV) bool {
-	data, err := kv.Marshal()
+	client mr.NodehostAPIClient, clusterID uint64, kv *kv.KV) bool {
+	data, err := kv.MarshalBinary()
 	if err != nil {
 		panic(err)
 	}
@@ -1225,7 +1225,7 @@ func makeWriteRequest(ctx context.Context,
 }
 
 func makeReadRequest(ctx context.Context,
-	client mr.NodehostAPIClient, clusterID uint64, kv *kvpb.PBKV) bool {
+	client mr.NodehostAPIClient, clusterID uint64, kv *kv.KV) bool {
 	ri := &mr.RaftReadIndex{
 		ClusterId: clusterID,
 		Data:      []byte(kv.Key),
@@ -1267,7 +1267,7 @@ func makeMonkeyTestRequests(ctx context.Context,
 	for i := 0; i < repeat; i++ {
 		key := fmt.Sprintf("key-%d", rand.Uint64())
 		val := random.String(rand.Int()%16 + 8)
-		kv := &kvpb.PBKV{
+		kv := &kv.KV{
 			Key: key,
 			Val: val,
 		}

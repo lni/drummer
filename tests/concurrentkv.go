@@ -28,7 +28,7 @@ import (
 	"unsafe"
 
 	sm "github.com/lni/dragonboat/v3/statemachine"
-	"github.com/lni/drummer/v3/kvpb"
+	"github.com/lni/drummer/v3/kv"
 )
 
 type kvdata struct {
@@ -86,12 +86,12 @@ func (s *ConcurrentKVTest) Lookup(key interface{}) (interface{}, error) {
 
 // Update updates the object using the specified committed raft entry.
 func (s *ConcurrentKVTest) Update(ents []sm.Entry) ([]sm.Entry, error) {
-	dataKv := &kvpb.PBKV{}
-	if err := dataKv.Unmarshal(ents[0].Cmd); err != nil {
+	dataKv := &kv.KV{}
+	if err := dataKv.UnmarshalBinary(ents[0].Cmd); err != nil {
 		panic(err)
 	}
-	key := dataKv.GetKey()
-	val := dataKv.GetVal()
+	key := dataKv.Key
+	val := dataKv.Val
 	kvdata := (*kvdata)(atomic.LoadPointer(&(s.kvdata)))
 	kvdata.kvs.Store(key, val)
 	ents[0].Result = sm.Result{Value: uint64(len(ents[0].Cmd))}

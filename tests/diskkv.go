@@ -37,7 +37,7 @@ import (
 
 	"github.com/lni/dragonboat/v3/config"
 	sm "github.com/lni/dragonboat/v3/statemachine"
-	"github.com/lni/drummer/v3/kvpb"
+	"github.com/lni/drummer/v3/kv"
 	"github.com/lni/goutils/logutil"
 	"github.com/lni/goutils/random"
 )
@@ -551,12 +551,12 @@ func (d *DiskKVTest) Update(ents []sm.Entry) ([]sm.Entry, error) {
 	wb := db.db.NewBatch()
 	defer wb.Close()
 	for idx, e := range ents {
-		dataKv := &kvpb.PBKV{}
-		if err := dataKv.Unmarshal(e.Cmd); err != nil {
+		dataKv := &kv.KV{}
+		if err := dataKv.UnmarshalBinary(e.Cmd); err != nil {
 			panic(err)
 		}
-		key := dataKv.GetKey()
-		val := dataKv.GetVal()
+		key := dataKv.Key
+		val := dataKv.Val
 		wb.Set([]byte(key), []byte(val), db.syncwo)
 		ents[idx].Result = sm.Result{Value: uint64(len(ents[idx].Cmd))}
 	}
@@ -617,14 +617,14 @@ func (d *DiskKVTest) saveToWriter(db *pebbledb,
 	iter := ss.NewIter(db.ro)
 	defer iter.Close()
 	var dataMap sync.Map
-	values := make([]*kvpb.PBKV, 0)
+	values := make([]*kv.KV, 0)
 	for iter.First(); iteratorIsValid(iter); iter.Next() {
 		key := iter.Key()
 		val := iter.Value()
 		dataMap.Store(string(key), string(val))
 	}
 	toList := func(k, v interface{}) bool {
-		kv := &kvpb.PBKV{
+		kv := &kv.KV{
 			Key: k.(string),
 			Val: v.(string),
 		}
@@ -642,7 +642,7 @@ func (d *DiskKVTest) saveToWriter(db *pebbledb,
 		return err
 	}
 	for _, dataKv := range values {
-		data, err := dataKv.Marshal()
+		data, err := dataKv.MarshalBinary()
 		if err != nil {
 			panic(err)
 		}
@@ -744,8 +744,8 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 		if _, err := io.ReadFull(r, data); err != nil {
 			return err
 		}
-		dataKv := &kvpb.PBKV{}
-		if err := dataKv.Unmarshal(data); err != nil {
+		dataKv := &kv.KV{}
+		if err := dataKv.UnmarshalBinary(data); err != nil {
 			panic(err)
 		}
 		wb.Set([]byte(dataKv.Key), []byte(dataKv.Val), db.syncwo)
