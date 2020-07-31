@@ -24,7 +24,7 @@ import (
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
 	sm "github.com/lni/dragonboat/v3/statemachine"
-	"github.com/lni/drummer/v3/kvpb"
+	"github.com/lni/drummer/v3/kv"
 )
 
 func TestDBCanBeCreatedAndUsed(t *testing.T) {
@@ -221,19 +221,19 @@ func TestDiskKVCanBeUpdated(t *testing.T) {
 		if idx != 0 {
 			t.Fatalf("idx %d", idx)
 		}
-		pair1 := &kvpb.PBKV{
+		pair1 := &kv.KV{
 			Key: "test-key1",
 			Val: "test-val1",
 		}
-		pair2 := &kvpb.PBKV{
+		pair2 := &kv.KV{
 			Key: "test-key2",
 			Val: "test-val2",
 		}
-		data1, err := pair1.Marshal()
+		data1, err := pair1.MarshalBinary()
 		if err != nil {
 			panic(err)
 		}
-		data2, err := pair2.Marshal()
+		data2, err := pair2.MarshalBinary()
 		if err != nil {
 			panic(err)
 		}
@@ -278,27 +278,27 @@ func TestDiskKVSnapshot(t *testing.T) {
 		if idx != 0 {
 			t.Fatalf("idx %d", idx)
 		}
-		pair1 := &kvpb.PBKV{
+		pair1 := &kv.KV{
 			Key: "test-key1",
 			Val: "test-val1",
 		}
-		pair2 := &kvpb.PBKV{
+		pair2 := &kv.KV{
 			Key: "test-key2",
 			Val: "test-val2",
 		}
-		pair3 := &kvpb.PBKV{
+		pair3 := &kv.KV{
 			Key: "test-key3",
 			Val: "test-val3",
 		}
-		data1, err := pair1.Marshal()
+		data1, err := pair1.MarshalBinary()
 		if err != nil {
 			panic(err)
 		}
-		data2, err := pair2.Marshal()
+		data2, err := pair2.MarshalBinary()
 		if err != nil {
 			panic(err)
 		}
-		data3, err := pair3.Marshal()
+		data3, err := pair3.MarshalBinary()
 		if err != nil {
 			panic(err)
 		}
