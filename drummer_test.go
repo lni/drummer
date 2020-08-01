@@ -75,7 +75,7 @@ func runDrummerMonkeyTest(t *testing.T, name string) {
 	if to.silent {
 		plog.Infof("silent mode, most logging will be disabled")
 		logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
-		logger.GetLogger("transport").SetLevel(logger.ERROR)
+		logger.GetLogger("transport").SetLevel(logger.CRITICAL)
 		logger.GetLogger("raft").SetLevel(logger.ERROR)
 		logger.GetLogger("rsm").SetLevel(logger.ERROR)
 		logger.GetLogger("logdb").SetLevel(logger.ERROR)
