@@ -28,7 +28,6 @@ import (
 	"os"
 	"runtime"
 	"runtime/pprof"
-	"strconv"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -48,9 +47,6 @@ import (
 )
 
 const (
-	mtNodeID1                 uint64 = 2345
-	mtNodeID2                 uint64 = 6789
-	mtNodeID3                 uint64 = 9876
 	monkeyTestSecondToRun     uint64 = 1200
 	testClientWorkerCount     uint64 = 32
 	numOfClusters             uint64 = 128
@@ -67,23 +63,12 @@ const (
 	maxWaitForSyncSecond      int    = 120
 	waitForStableSecond       uint64 = 25
 	testIdleTime              uint64 = 100
-	nodeUpTimeLowMillisecond  int64  = 150000
-	nodeUpTimeHighMillisecond int64  = 240000
-	lowUpTimeLowMillisecond   int64  = 1000
-	lowUpTimeHighMillisecond  int64  = 50000
+	nodeUpTimeLowSecond       uint64 = 150000
+	nodeUpTimeHighSecond      uint64 = 240000
 	defaultTestTimeout               = 5 * time.Second
-	clusterCheckWaitSecond           = 20 * time.Second
 	maxAllowedHeapSize               = 1024 * 1024 * 1024 * 4
 	lcmlog                           = "drummer-lcm.jepsen"
 	ednlog                           = "drummer-lcm.edn"
-)
-
-var (
-	mtNodeIDList = []uint64{
-		mtNodeID1,
-		mtNodeID2,
-		mtNodeID3,
-	}
 )
 
 var dn = logutil.DescribeNode
@@ -112,471 +97,6 @@ func (t nodeType) String() string {
 		return "NodehostNode"
 	} else {
 		panic("unknown type")
-	}
-}
-
-type mtAddressList struct {
-	addressList            []string
-	nodehostAddressList    []string
-	apiAddressList         []string
-	nodehostAPIAddressList []string
-}
-
-func newDrummerMonkeyTestAddr(base uint64) *mtAddressList {
-	d := &mtAddressList{
-		addressList:            make([]string, 0),
-		nodehostAddressList:    make([]string, 0),
-		apiAddressList:         make([]string, 0),
-		nodehostAPIAddressList: make([]string, 0),
-	}
-	port := base + 1
-	for i := uint64(0); i < uint64(numOfTestDrummerNodes); i++ {
-		addr := fmt.Sprintf("localhost:%d", port)
-		d.addressList = append(d.addressList, addr)
-		port++
-	}
-	for i := uint64(0); i < uint64(numOfTestNodeHostNodes); i++ {
-		addr := fmt.Sprintf("localhost:%d", port)
-		d.nodehostAddressList = append(d.nodehostAddressList, addr)
-		port++
-	}
-	for i := uint64(0); i < uint64(numOfTestDrummerNodes); i++ {
-		addr := fmt.Sprintf("localhost:%d", port)
-		d.apiAddressList = append(d.apiAddressList, addr)
-		port++
-	}
-	for i := uint64(0); i < uint64(numOfTestNodeHostNodes); i++ {
-		addr := fmt.Sprintf("localhost:%d", port)
-		d.nodehostAPIAddressList = append(d.nodehostAPIAddressList, addr)
-		port++
-	}
-	return d
-}
-
-func getSwitchDB() bool {
-	v := os.Getenv("SWITCHTESTDB")
-	if len(v) > 0 {
-		iv, err := strconv.Atoi(v)
-		if err != nil {
-			panic(err)
-		}
-		return iv == 1
-	}
-	return false
-}
-
-func getTestAddrList() *mtAddressList {
-	base := defaultBasePort
-	v := os.Getenv("DRUMMERMTPORT")
-	if len(v) > 0 {
-		iv, err := strconv.Atoi(v)
-		if err != nil {
-			panic(err)
-		}
-		base = uint64(iv)
-		plog.Infof("using port base from env %d", base)
-	} else {
-		plog.Infof("using default port base %d", base)
-	}
-	return newDrummerMonkeyTestAddr(base)
-}
-
-func getTestDirs(dl *mtAddressList) ([]string, []string) {
-	drummerDirList := make([]string, 0)
-	nodehostDirList := make([]string, 0)
-	for i := uint64(1); i <= uint64(len(dl.addressList)); i++ {
-		nn := fmt.Sprintf("drummer-node-%d", i)
-		drummerDirList = append(drummerDirList, nn)
-	}
-	for i := uint64(1); i <= uint64(len(dl.nodehostAddressList)); i++ {
-		nn := fmt.Sprintf("nodehost-node-%d", i)
-		nodehostDirList = append(nodehostDirList, nn)
-	}
-	return drummerDirList, nodehostDirList
-}
-
-func removeMonkeyTestDir(fs config.IFS) {
-	fs.RemoveAll(monkeyTestWorkingDir)
-}
-
-// TODO: need to save the test dir when running in the memfs mode
-func saveMonkeyTestDir() {
-	newName := fmt.Sprintf("%s-%d", monkeyTestWorkingDir, rand.Uint64())
-	plog.Infof("going to save the monkey test data dir to %s", newName)
-	if err := os.Rename(monkeyTestWorkingDir, newName); err != nil {
-		panic(err)
-	}
-}
-
-func getTestConfig() (config.Config, config.NodeHostConfig) {
-	rc := config.Config{
-		ElectionRTT:        20,
-		HeartbeatRTT:       1,
-		CheckQuorum:        true,
-		SnapshotEntries:    100,
-		CompactionOverhead: 100,
-	}
-	nhc := config.NodeHostConfig{
-		WALDir:                "drummermt",
-		NodeHostDir:           "drummermt",
-		RTTMillisecond:        50,
-		SystemTickerPrecision: 10 * time.Millisecond,
-		NotifyCommit:          true,
-		Expert: config.ExpertConfig{
-			ExecShards:  4,
-			LogDBShards: 1,
-		},
-	}
-	return rc, nhc
-}
-
-type testNode struct {
-	nodeType           nodeType
-	listIndex          uint64
-	dir                string
-	nh                 *dragonboat.NodeHost
-	drummer            *Drummer
-	server             *NodehostAPI
-	drummerNodeHost    *client.NodeHostClient
-	drummerStopped     bool
-	stopped            bool
-	partitionTestNode  bool
-	partitionStartTime map[uint64]struct{}
-	partitionEndTime   map[uint64]struct{}
-	next               int64
-	stopper            *syncutil.Stopper
-	mutualTLS          bool
-	switchDB           bool
-	dbCycle            uint64
-	fs                 config.IFS
-}
-
-func (n *testNode) MustBeDrummerNode() {
-	if n.nodeType != nodeTypeDrummer {
-		panic("not drummer node")
-	}
-}
-
-func (n *testNode) MustBeNodehostNode() {
-	if n.nodeType != nodeTypeNodehost {
-		panic("not nodehost node")
-	}
-}
-
-func (n *testNode) IsDrummerLeader() bool {
-	n.MustBeDrummerNode()
-	return n.drummer.isLeaderDrummerNode()
-}
-
-func (n *testNode) SetupPartitionTests(monkeyPlaySeconds uint64) {
-	st := partitionMinStartSecond
-	et := st
-	plog.Infof("test node %d is set to run partition test", n.listIndex+1)
-	n.partitionTestNode = true
-	for {
-		partitionTime := rand.Uint64() % partitionCycle
-		if partitionTime < partitionMinSecond {
-			partitionTime = partitionMinSecond
-		}
-		interval := rand.Uint64() % partitionCycleInterval
-		if interval < partitionCycleMinInterval {
-			interval = partitionCycleMinInterval
-		}
-		st = et + interval
-		et = st + partitionTime
-		if st < monkeyPlaySeconds && et < monkeyPlaySeconds {
-			plog.Infof("adding a partition cycle, st %d, et %d", st, et)
-			n.partitionStartTime[st] = struct{}{}
-			n.partitionEndTime[et] = struct{}{}
-		} else {
-			return
-		}
-	}
-}
-
-func (n *testNode) IsPartitionTestNode() bool {
-	return n.partitionTestNode
-}
-
-func (n *testNode) Running() bool {
-	if n.nh != nil && !n.stopped {
-		return true
-	}
-	return false
-}
-
-func (n *testNode) tryIgnoreSync() {
-	memfs, ok := n.fs.(*dragonboat.MemFS)
-	if ok {
-		plog.Infof("SetIgnoreSyncs called")
-		n.nh.PartitionNode()
-		memfs.SetIgnoreSyncs(true)
-		time.Sleep(time.Second)
-	}
-}
-
-func (n *testNode) tryAllowSync() {
-	memfs, ok := n.fs.(*dragonboat.MemFS)
-	if ok {
-		plog.Infof("ResetToSyncedState called")
-		if n.nh != nil {
-			n.nh.RestorePartitionedNode()
-		}
-		memfs.SetIgnoreSyncs(false)
-		memfs.ResetToSyncedState()
-	}
-}
-
-func (n *testNode) Stop() {
-	if n.stopped {
-		panic("already stopped")
-	}
-	n.tryIgnoreSync()
-	n.stopped = true
-	done := uint32(0)
-	// see whether we can stop the node within reasonable timeframe
-	go func() {
-		count := 0
-		for {
-			time.Sleep(100 * time.Millisecond)
-			if atomic.LoadUint32(&done) == 1 {
-				break
-			}
-			count++
-			if count == 10*maxWaitForStopSecond {
-				pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
-				plog.Panicf("failed to stop nodehost %s, it is a %s, idx %d",
-					n.nh.RaftAddress(), n.nodeType, n.listIndex)
-			}
-		}
-	}()
-	addr := n.nh.RaftAddress()
-	if n.nodeType == nodeTypeDrummer {
-		plog.Infof("going to stop the drummer of %s", addr)
-		if n.drummer != nil && !n.drummerStopped {
-			n.drummer.Stop()
-			n.drummerStopped = true
-		}
-		plog.Infof("the drummer part of %s stopped", addr)
-	}
-	plog.Infof("going to stop the nh of %s", addr)
-	if n.server != nil {
-		n.server.Stop()
-	}
-	if n.drummerNodeHost != nil {
-		n.drummerNodeHost.Stop()
-	}
-	n.nh.Stop()
-	plog.Infof("the nh part of %s stopped", addr)
-	if n.stopper != nil {
-		plog.Infof("monkey node has a stopper, %s", addr)
-		n.stopper.Stop()
-		plog.Infof("stopper on monkey %s stopped", addr)
-	}
-	atomic.StoreUint32(&done, 1)
-	n.nh = nil
-}
-
-func (n *testNode) Start(dl *mtAddressList) {
-	n.tryAllowSync()
-	n.dbCycle++
-	if n.nodeType == nodeTypeDrummer {
-		n.startDrummerNode(dl)
-	} else if n.nodeType == nodeTypeNodehost {
-		n.startNodehostNode(dl)
-	} else {
-		panic("unknown node type")
-	}
-}
-
-func (n *testNode) compact() {
-	if n.nodeType == nodeTypeNodehost {
-		cid := rand.Uint64() % 128
-		nh := n.nh
-		for _, rn := range nh.Clusters() {
-			if rn.ClusterID() == cid {
-				plog.Infof("going to request a compaction for cluster %d", cid)
-				sop, err := nh.RequestCompaction(cid, rn.NodeID())
-				if err == dragonboat.ErrRejected {
-					return
-				}
-				if err != nil {
-					plog.Panicf("failed to request compaction %v", err)
-				}
-				<-sop.CompletedC()
-				plog.Infof("cluster %d compaction completed", cid)
-			}
-		}
-	}
-}
-
-func (n *testNode) GetMultiClusterAndTick() (*multiCluster, uint64, error) {
-	n.MustBeDrummerNode()
-	sc, err := n.drummer.getSchedulerContext()
-	if err != nil {
-		return nil, 0, err
-	}
-	return sc.ClusterImage, sc.Tick, nil
-}
-
-func (n *testNode) GetMultiCluster() (*multiCluster, error) {
-	n.MustBeDrummerNode()
-	sc, err := n.drummer.getSchedulerContext()
-	if err != nil {
-		return nil, err
-	}
-	return sc.ClusterImage, nil
-}
-
-func (n *testNode) GetNodeHostInfo() (*multiNodeHost, error) {
-	n.MustBeDrummerNode()
-	sc, err := n.drummer.getSchedulerContext()
-	if err != nil {
-		return nil, err
-	}
-	return sc.NodeHostImage, nil
-}
-
-func (n *testNode) setNodeNext(low int64, high int64) {
-	if high <= low {
-		panic("high <= low")
-	}
-	var v int64
-	ll := rand.Uint64()%10 == 0
-	if ll {
-		low = lowUpTimeLowMillisecond
-		high = lowUpTimeHighMillisecond
-	}
-	v = (low + rand.Int63()%(high-low)) * 1000000
-	plog.Infof("next event for %s %d is scheduled in %d second, %t",
-		n.nodeType, n.listIndex+1, v/1000000000, ll)
-	n.next = time.Now().UnixNano() + v
-}
-
-func (n *testNode) switchToRocksDB() bool {
-	return n.switchDB && n.dbCycle%2 != 0
-}
-
-func (n *testNode) startDrummerNode(dl *mtAddressList) {
-	if n.nodeType != nodeTypeDrummer {
-		panic("trying to start a drummer on a non-drummer node")
-	}
-	if !n.stopped {
-		panic("already running")
-	}
-	rc, nhc := getTestConfig()
-	config := config.NodeHostConfig{}
-	config = nhc
-	config.NodeHostDir = n.fs.PathJoin(n.dir, nhc.NodeHostDir)
-	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
-	config.RaftAddress = dl.addressList[n.listIndex]
-	config.FS = n.fs
-	nh, err := dragonboat.NewNodeHost(config)
-	if err != nil {
-		panic(err)
-	}
-	n.nh = nh
-	peers := make(map[uint64]string)
-	for idx, v := range dl.addressList {
-		peers[uint64(idx+1)] = v
-	}
-	rc.NodeID = uint64(n.listIndex + 1)
-	rc.ClusterID = defaultClusterID
-	if err := nh.StartCluster(peers, false, NewDB, rc); err != nil {
-		panic(err)
-	}
-	grpcHost := dl.apiAddressList[n.listIndex]
-	drummerServer := NewDrummer(nh, grpcHost)
-	drummerServer.Start()
-	n.drummer = drummerServer
-	n.drummerStopped = false
-	n.stopped = false
-	n.stopper = syncutil.NewStopper()
-}
-
-func (n *testNode) startNodehostNode(dl *mtAddressList) {
-	if n.nodeType != nodeTypeNodehost {
-		panic("trying to start a drummer on a non-drummer node")
-	}
-	if !n.stopped {
-		panic("already running")
-	}
-	_, nhc := getTestConfig()
-	config := config.NodeHostConfig{}
-	config = nhc
-	config.NodeHostDir = n.fs.PathJoin(n.dir, nhc.NodeHostDir)
-	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
-	config.RaftAddress = dl.nodehostAddressList[n.listIndex]
-	config.FS = n.fs
-	apiAddress := dl.nodehostAPIAddressList[n.listIndex]
-	nh, err := dragonboat.NewNodeHost(config)
-	if err != nil {
-		panic(err)
-	}
-	n.nh = nh
-	n.drummerNodeHost = client.NewNodeHostClient(nh, dl.apiAddressList, apiAddress)
-	n.server = NewNodehostAPI(apiAddress, nh)
-	n.stopped = false
-}
-
-func checkPartitionedNodeHost(t *testing.T, nodes []*testNode) {
-	for _, node := range nodes {
-		node.MustBeNodehostNode()
-		if node.nh.IsPartitioned() {
-			t.Fatalf("nodehost is still in partitioned test mode")
-		}
-	}
-}
-
-func checkRateLimiterState(t *testing.T, nodes []*testNode) {
-	if rateLimiterDisabledInRaftConfig() {
-		return
-	}
-	for _, n := range nodes {
-		nh := n.nh
-		for _, rn := range nh.Clusters() {
-			rl := rn.GetRateLimiter()
-			clusterID := rn.ClusterID()
-			nodeID := rn.NodeID()
-			if rl.Get() != rn.GetInMemLogSize() {
-				t.Fatalf("%s, rl mem log size %d, in mem log size %d",
-					dn(clusterID, nodeID), rl.Get(), rn.GetInMemLogSize())
-			}
-		}
-	}
-}
-
-func checkNodeHostSynced(t *testing.T, nodes []*testNode) {
-	count := 0
-	for {
-		appliedMap := make(map[uint64]uint64)
-		notSynced := make(map[uint64]bool)
-		for _, n := range nodes {
-			nh := n.nh
-			for _, rn := range nh.Clusters() {
-				clusterID := rn.ClusterID()
-				lastApplied := rn.GetLastApplied()
-				existingLastApplied, ok := appliedMap[clusterID]
-				if !ok {
-					appliedMap[clusterID] = lastApplied
-				} else {
-					if existingLastApplied != lastApplied {
-						notSynced[clusterID] = true
-					}
-				}
-			}
-		}
-		if len(notSynced) > 0 {
-			time.Sleep(100 * time.Millisecond)
-			count++
-		} else {
-			return
-		}
-		// fail the test and dump details to log
-		if count == 10*maxWaitForSyncSecond {
-			logCluster(nodes, notSynced)
-			t.Fatalf("%d failed to sync last applied", len(notSynced))
-		}
 	}
 }
 
@@ -612,7 +132,7 @@ func getEntryHash(ent raftpb.Entry) uint64 {
 	return binary.LittleEndian.Uint64(h.Sum(nil)[:8])
 }
 
-func getConfigFromDeployedJson() (config.Config, bool) {
+func getConfigFromJSON() (config.Config, bool) {
 	cfg := config.Config{}
 	fn := "dragonboat-drummer.json"
 	if _, err := os.Stat(fn); os.IsNotExist(err) {
@@ -628,16 +148,16 @@ func getConfigFromDeployedJson() (config.Config, bool) {
 	return cfg, true
 }
 
-func rateLimiterDisabledInRaftConfig() bool {
-	cfg, ok := getConfigFromDeployedJson()
+func rateLimiterDisabledInConfig() bool {
+	cfg, ok := getConfigFromJSON()
 	if !ok {
 		return true
 	}
 	return cfg.MaxInMemLogSize == 0
 }
 
-func snapshotDisabledInRaftConfig() bool {
-	cfg, ok := getConfigFromDeployedJson()
+func snapshotDisabledInConfig() bool {
+	cfg, ok := getConfigFromJSON()
 	if !ok {
 		return false
 	}
@@ -645,15 +165,14 @@ func snapshotDisabledInRaftConfig() bool {
 }
 
 func lessSnapshotTest() bool {
-	cfg, ok := getConfigFromDeployedJson()
+	cfg, ok := getConfigFromJSON()
 	if !ok {
 		return false
 	}
 	return cfg.SnapshotEntries > 30
 }
 
-func printEntryDetails(clusterID uint64,
-	nodeID uint64, entries []raftpb.Entry) {
+func printEntries(clusterID uint64, nodeID uint64, entries []raftpb.Entry) {
 	for _, ent := range entries {
 		plog.Infof("%s, idx %d, term %d, type %s, entry len %d, hash %d",
 			dn(clusterID, nodeID), ent.Index, ent.Term, ent.Type,
@@ -661,14 +180,544 @@ func printEntryDetails(clusterID uint64,
 	}
 }
 
-func checkLogDBEntriesSynced(t *testing.T, nodes []*testNode) {
-	if !snapshotDisabledInRaftConfig() {
+func logCluster(nodes []*testNode, clusterIDMap map[uint64]bool) {
+	for _, n := range nodes {
+		nh := n.nh
+		for _, rn := range nh.Clusters() {
+			clusterID := rn.ClusterID()
+			if _, ok := clusterIDMap[clusterID]; ok {
+				plog.Infof("%s rn.lastApplied %d",
+					dn(rn.ClusterID(), rn.NodeID()), rn.GetLastApplied())
+				rn.DumpRaftInfoToLog()
+			}
+		}
+	}
+}
+
+func logClusterToRepair(cl []clusterRepair, tick uint64) {
+	plog.Infof("cluster to repair info, tick %d", tick)
+	for _, c := range cl {
+		plog.Infof("cluster id %d, cfg chg idx %d, failed %v, ok %v, to start %v",
+			c.clusterID, c.cluster.ConfigChangeIndex,
+			c.failedNodes, c.okNodes, c.nodesToStart)
+	}
+}
+
+func logUnavailableCluster(cl []cluster, tick uint64) {
+	plog.Infof("unavailable cluster info, tick %d", tick)
+	for _, c := range cl {
+		plog.Infof("cluster id %d, config change idx %d, nodes %v",
+			c.ClusterID, c.ConfigChangeIndex, c.Nodes)
+	}
+}
+
+func disableRandomDelay() {
+	if err := os.Setenv("IOEI", "disabled"); err != nil {
+		panic(err)
+	}
+}
+
+func disableClusterRandomDelay(clusterID uint64) {
+	pcs := fmt.Sprintf("IOEI-%d", clusterID)
+	if err := os.Setenv(pcs, "disabled"); err != nil {
+		panic(err)
+	}
+}
+
+func getRandomClusterID(size uint64) uint64 {
+	return (rand.Uint64() % size) + 1
+}
+
+type testSetup struct {
+	drummerAddrs     []string
+	nodehostAddrs    []string
+	drummerAPIAddrs  []string
+	nodehostAPIAddrs []string
+	drummerDirs      []string
+	nodehostDirs     []string
+}
+
+func newTestSetup(port uint64) *testSetup {
+	ts := &testSetup{
+		drummerAddrs:     make([]string, 0),
+		nodehostAddrs:    make([]string, 0),
+		drummerAPIAddrs:  make([]string, 0),
+		nodehostAPIAddrs: make([]string, 0),
+		drummerDirs:      make([]string, 0),
+		nodehostDirs:     make([]string, 0),
+	}
+	port = port + 1
+	for i := uint64(0); i < uint64(numOfTestDrummerNodes); i++ {
+		addr := fmt.Sprintf("localhost:%d", port)
+		ts.drummerAddrs = append(ts.drummerAddrs, addr)
+		nn := fmt.Sprintf("drummer-node-%d", i)
+		ts.drummerDirs = append(ts.drummerDirs, nn)
+		port++
+	}
+	for i := uint64(0); i < uint64(numOfTestNodeHostNodes); i++ {
+		addr := fmt.Sprintf("localhost:%d", port)
+		ts.nodehostAddrs = append(ts.nodehostAddrs, addr)
+		nn := fmt.Sprintf("nodehost-node-%d", i)
+		ts.nodehostDirs = append(ts.nodehostDirs, nn)
+		port++
+	}
+	for i := uint64(0); i < uint64(numOfTestDrummerNodes); i++ {
+		addr := fmt.Sprintf("localhost:%d", port)
+		ts.drummerAPIAddrs = append(ts.drummerAPIAddrs, addr)
+		port++
+	}
+	for i := uint64(0); i < uint64(numOfTestNodeHostNodes); i++ {
+		addr := fmt.Sprintf("localhost:%d", port)
+		ts.nodehostAPIAddrs = append(ts.nodehostAPIAddrs, addr)
+		port++
+	}
+	return ts
+}
+
+func removeTestDir(fs config.IFS) {
+	fs.RemoveAll(monkeyTestWorkingDir)
+}
+
+// TODO: need to save the test dir when running in the memfs mode
+func saveTestDir() {
+	newName := fmt.Sprintf("%s-%d", monkeyTestWorkingDir, rand.Uint64())
+	plog.Infof("going to save the monkey test data dir to %s", newName)
+	if err := os.Rename(monkeyTestWorkingDir, newName); err != nil {
+		panic(err)
+	}
+}
+
+func getTestConfig() (config.Config, config.NodeHostConfig) {
+	rc := config.Config{
+		ElectionRTT:        20,
+		HeartbeatRTT:       1,
+		CheckQuorum:        true,
+		SnapshotEntries:    100,
+		CompactionOverhead: 100,
+	}
+	nhc := config.NodeHostConfig{
+		WALDir:                "drummermt",
+		NodeHostDir:           "drummermt",
+		RTTMillisecond:        50,
+		SystemTickerPrecision: 10 * time.Millisecond,
+		NotifyCommit:          true,
+		Expert: config.ExpertConfig{
+			ExecShards:  4,
+			LogDBShards: 1,
+		},
+	}
+	return rc, nhc
+}
+
+type testNode struct {
+	nodeType           nodeType
+	next               uint64
+	index              uint64
+	cycle              uint64
+	dir                string
+	nh                 *dragonboat.NodeHost
+	drummer            *Drummer
+	server             *NodehostAPI
+	drummerClient      *client.NodeHostClient
+	drummerStopped     bool
+	stopped            bool
+	partitionTestNode  bool
+	partitionStartTime map[uint64]struct{}
+	partitionEndTime   map[uint64]struct{}
+	stopper            *syncutil.Stopper
+	fs                 config.IFS
+}
+
+func (n *testNode) isDrummerNode() bool {
+	return n.nodeType == nodeTypeDrummer
+}
+
+func (n *testNode) mustBeDrummer() {
+	if n.nodeType != nodeTypeDrummer {
+		panic("not drummer node")
+	}
+}
+
+func (n *testNode) mustBeNodehost() {
+	if n.nodeType != nodeTypeNodehost {
+		panic("not nodehost node")
+	}
+}
+
+func (n *testNode) removeNodeHostDir() {
+	n.mustBeNodehost()
+	idx := n.index + 1
+	nn := fmt.Sprintf("nodehost-node-%d", idx)
+	nd := n.fs.PathJoin(monkeyTestWorkingDir, nn)
+	plog.Infof("monkey is going to delete nodehost dir at %s for testing", nd)
+	if err := n.fs.RemoveAll(nd); err != nil {
+		panic(err)
+	}
+}
+
+func (n *testNode) isDrummerLeader() bool {
+	n.mustBeDrummer()
+	return n.drummer.isLeaderDrummerNode()
+}
+
+func (n *testNode) setupPartitionTests(seconds uint64) {
+	st := partitionMinStartSecond
+	et := st
+	plog.Infof("test node %d is set to run partition test", n.index+1)
+	n.partitionTestNode = true
+	for {
+		partitionTime := rand.Uint64() % partitionCycle
+		if partitionTime < partitionMinSecond {
+			partitionTime = partitionMinSecond
+		}
+		interval := rand.Uint64() % partitionCycleInterval
+		if interval < partitionCycleMinInterval {
+			interval = partitionCycleMinInterval
+		}
+		st = et + interval
+		et = st + partitionTime
+		if st < seconds && et < seconds {
+			plog.Infof("adding a partition cycle, st %d, et %d", st, et)
+			n.partitionStartTime[st] = struct{}{}
+			n.partitionEndTime[et] = struct{}{}
+		} else {
+			return
+		}
+	}
+}
+
+func (n *testNode) isPartitionTestNode() bool {
+	return n.partitionTestNode
+}
+
+func (n *testNode) isRunning() bool {
+	if n.nh != nil && !n.stopped {
+		return true
+	}
+	return false
+}
+
+func (n *testNode) ignoreSync() {
+	memfs, ok := n.fs.(*dragonboat.MemFS)
+	if ok {
+		plog.Infof("SetIgnoreSyncs called")
+		n.nh.PartitionNode()
+		memfs.SetIgnoreSyncs(true)
+		time.Sleep(time.Second)
+	}
+}
+
+func (n *testNode) allowSync() {
+	memfs, ok := n.fs.(*dragonboat.MemFS)
+	if ok {
+		plog.Infof("ResetToSyncedState called")
+		if n.nh != nil {
+			n.nh.RestorePartitionedNode()
+		}
+		memfs.SetIgnoreSyncs(false)
+		memfs.ResetToSyncedState()
+	}
+}
+
+func (n *testNode) stop() {
+	if n.stopped {
+		panic("already stopped")
+	}
+	n.ignoreSync()
+	n.stopped = true
+	done := uint32(0)
+	// see whether we can stop the node within reasonable timeframe
+	go func() {
+		count := 0
+		for {
+			time.Sleep(100 * time.Millisecond)
+			if atomic.LoadUint32(&done) == 1 {
+				break
+			}
+			count++
+			if count == 10*maxWaitForStopSecond {
+				pprof.Lookup("goroutine").WriteTo(os.Stderr, 1)
+				plog.Panicf("failed to stop nodehost %s, it is a %s, idx %d",
+					n.nh.RaftAddress(), n.nodeType, n.index)
+			}
+		}
+	}()
+	addr := n.nh.RaftAddress()
+	if n.nodeType == nodeTypeDrummer {
+		plog.Infof("going to stop the drummer of %s", addr)
+		if n.drummer != nil && !n.drummerStopped {
+			n.drummer.Stop()
+			n.drummerStopped = true
+		}
+		plog.Infof("the drummer part of %s stopped", addr)
+	}
+	plog.Infof("going to stop the nh of %s", addr)
+	if n.server != nil {
+		n.server.Stop()
+	}
+	if n.drummerClient != nil {
+		n.drummerClient.Stop()
+	}
+	n.nh.Stop()
+	plog.Infof("the nh part of %s stopped", addr)
+	if n.stopper != nil {
+		plog.Infof("monkey node has a stopper, %s", addr)
+		n.stopper.Stop()
+		plog.Infof("stopper on monkey %s stopped", addr)
+	}
+	atomic.StoreUint32(&done, 1)
+	n.nh = nil
+}
+
+func (n *testNode) start(ts *testSetup) {
+	n.allowSync()
+	n.cycle++
+	if n.nodeType == nodeTypeDrummer {
+		n.startDrummerNode(ts)
+	} else if n.nodeType == nodeTypeNodehost {
+		n.startNodehostNode(ts)
+	} else {
+		panic("unknown node type")
+	}
+}
+
+func (n *testNode) compact() {
+	if n.nodeType == nodeTypeNodehost {
+		cid := rand.Uint64() % 128
+		nh := n.nh
+		for _, rn := range nh.Clusters() {
+			if rn.ClusterID() == cid {
+				plog.Infof("going to request a compaction for cluster %d", cid)
+				sop, err := nh.RequestCompaction(cid, rn.NodeID())
+				if err == dragonboat.ErrRejected {
+					return
+				}
+				if err != nil {
+					plog.Panicf("failed to request compaction %v", err)
+				}
+				<-sop.CompletedC()
+				plog.Infof("cluster %d compaction completed", cid)
+			}
+		}
+	}
+}
+
+func (n *testNode) getClustersAndTick() (*multiCluster, uint64, error) {
+	n.mustBeDrummer()
+	sc, err := n.drummer.getSchedulerContext()
+	if err != nil {
+		return nil, 0, err
+	}
+	return sc.ClusterImage, sc.Tick, nil
+}
+
+func (n *testNode) getClusters() (*multiCluster, error) {
+	n.mustBeDrummer()
+	sc, err := n.drummer.getSchedulerContext()
+	if err != nil {
+		return nil, err
+	}
+	return sc.ClusterImage, nil
+}
+
+func (n *testNode) setNodeNext(low uint64, high uint64) {
+	if high <= low {
+		panic("high <= low")
+	}
+	v := low + rand.Uint64()%(high-low)
+	plog.Infof("next event for %s %d scheduled in %d second",
+		n.nodeType, n.index+1, v)
+	n.next = n.next + v
+}
+
+func (n *testNode) startDrummerNode(ts *testSetup) {
+	n.mustBeDrummer()
+	if !n.stopped {
+		panic("already running")
+	}
+	rc, nhc := getTestConfig()
+	config := config.NodeHostConfig{}
+	config = nhc
+	config.NodeHostDir = n.fs.PathJoin(n.dir, nhc.NodeHostDir)
+	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
+	config.RaftAddress = ts.drummerAddrs[n.index]
+	config.FS = n.fs
+	nh, err := dragonboat.NewNodeHost(config)
+	if err != nil {
+		panic(err)
+	}
+	n.nh = nh
+	peers := make(map[uint64]string)
+	for idx, v := range ts.drummerAddrs {
+		peers[uint64(idx+1)] = v
+	}
+	rc.NodeID = uint64(n.index + 1)
+	rc.ClusterID = defaultClusterID
+	if err := nh.StartCluster(peers, false, NewDB, rc); err != nil {
+		panic(err)
+	}
+	addr := ts.drummerAPIAddrs[n.index]
+	drummerServer := NewDrummer(nh, addr)
+	drummerServer.Start()
+	n.drummer = drummerServer
+	n.drummerStopped = false
+	n.stopped = false
+	n.stopper = syncutil.NewStopper()
+}
+
+func (n *testNode) startNodehostNode(ts *testSetup) {
+	if n.nodeType != nodeTypeNodehost {
+		panic("trying to start a drummer on a non-drummer node")
+	}
+	if !n.stopped {
+		panic("already running")
+	}
+	_, nhc := getTestConfig()
+	config := config.NodeHostConfig{}
+	config = nhc
+	config.NodeHostDir = n.fs.PathJoin(n.dir, nhc.NodeHostDir)
+	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
+	config.RaftAddress = ts.nodehostAddrs[n.index]
+	config.FS = n.fs
+	addr := ts.nodehostAPIAddrs[n.index]
+	nh, err := dragonboat.NewNodeHost(config)
+	if err != nil {
+		panic(err)
+	}
+	n.nh = nh
+	n.drummerClient = client.NewNodeHostClient(nh, ts.drummerAPIAddrs, addr)
+	n.server = NewNodehostAPI(addr, nh)
+	n.stopped = false
+}
+
+type testEnv struct {
+	ts               *testSetup
+	nodehosts        []*testNode
+	drummers         []*testNode
+	low              uint64
+	high             uint64
+	second           uint64
+	deleteDataTested bool
+	stopper          *syncutil.Stopper
+}
+
+func createTestNodes(ts *testSetup) *testEnv {
+	te := &testEnv{
+		drummers:  make([]*testNode, len(ts.drummerAddrs)),
+		nodehosts: make([]*testNode, len(ts.nodehostAddrs)),
+		ts:        ts,
+		low:       nodeUpTimeLowSecond,
+		high:      nodeUpTimeHighSecond,
+		stopper:   syncutil.NewStopper(),
+	}
+	for i := uint64(0); i < uint64(len(ts.drummerAddrs)); i++ {
+		fs := dragonboat.GetTestFS()
+		te.drummers[i] = &testNode{
+			index:              i,
+			stopped:            true,
+			dir:                fs.PathJoin(monkeyTestWorkingDir, ts.drummerDirs[i]),
+			nodeType:           nodeTypeDrummer,
+			partitionStartTime: make(map[uint64]struct{}),
+			partitionEndTime:   make(map[uint64]struct{}),
+			fs:                 fs,
+		}
+		removeTestDir(fs)
+	}
+	for i := uint64(0); i < uint64(len(ts.nodehostAddrs)); i++ {
+		fs := dragonboat.GetTestFS()
+		te.nodehosts[i] = &testNode{
+			index:              i,
+			stopped:            true,
+			dir:                fs.PathJoin(monkeyTestWorkingDir, ts.nodehostDirs[i]),
+			nodeType:           nodeTypeNodehost,
+			partitionStartTime: make(map[uint64]struct{}),
+			partitionEndTime:   make(map[uint64]struct{}),
+			fs:                 fs,
+		}
+		removeTestDir(fs)
+	}
+	return te
+}
+
+func (te *testEnv) checkPartitionedNodeHost(t *testing.T) {
+	for _, n := range te.nodehosts {
+		n.mustBeNodehost()
+		if n.nh.IsPartitioned() {
+			t.Fatalf("nodehost is still in partitioned mode")
+		}
+	}
+}
+
+func (te *testEnv) checkRateLimiterState(t *testing.T) {
+	if rateLimiterDisabledInConfig() {
+		return
+	}
+	for _, n := range te.nodehosts {
+		n.mustBeNodehost()
+		nh := n.nh
+		for _, rn := range nh.Clusters() {
+			rl := rn.GetRateLimiter()
+			clusterID := rn.ClusterID()
+			nodeID := rn.NodeID()
+			if rl.Get() != rn.GetInMemLogSize() {
+				t.Fatalf("%s, rl mem log size %d, in mem log size %d",
+					dn(clusterID, nodeID), rl.Get(), rn.GetInMemLogSize())
+			}
+		}
+	}
+}
+
+func (te *testEnv) checkNodeHostsSynced(t *testing.T) {
+	te.checkNodesSynced(t, te.nodehosts)
+}
+
+func (te *testEnv) checkDrummersSynced(t *testing.T) {
+	te.checkNodesSynced(t, te.drummers)
+}
+
+func (te *testEnv) checkNodesSynced(t *testing.T, nodes []*testNode) {
+	count := 0
+	for {
+		appliedMap := make(map[uint64]uint64)
+		notSynced := make(map[uint64]bool)
+		for _, n := range nodes {
+			nh := n.nh
+			for _, rn := range nh.Clusters() {
+				clusterID := rn.ClusterID()
+				lastApplied := rn.GetLastApplied()
+				existingLastApplied, ok := appliedMap[clusterID]
+				if !ok {
+					appliedMap[clusterID] = lastApplied
+				} else {
+					if existingLastApplied != lastApplied {
+						notSynced[clusterID] = true
+					}
+				}
+			}
+		}
+		if len(notSynced) > 0 {
+			time.Sleep(100 * time.Millisecond)
+			count++
+		} else {
+			return
+		}
+		// fail the test and dump details to log
+		if count == 10*maxWaitForSyncSecond {
+			logCluster(nodes, notSynced)
+			t.Fatalf("%d failed to sync last applied", len(notSynced))
+		}
+	}
+}
+
+func (te *testEnv) checkLogDBSynced(t *testing.T) {
+	if !snapshotDisabledInConfig() {
 		// log compaction enabled, we can't compare the full DB
 		return
 	}
 	hashMap := make(map[uint64]uint64)
 	notSynced := make(map[uint64]bool, 0)
-	for _, n := range nodes {
+	for _, n := range te.nodehosts {
+		n.mustBeNodehost()
 		nh := n.nh
 		for _, rn := range nh.Clusters() {
 			nodeID := rn.NodeID()
@@ -684,7 +733,7 @@ func checkLogDBEntriesSynced(t *testing.T, nodes []*testNode) {
 			plog.Infof("%s logdb entry hash %d, last applied %d, ent sz %d",
 				dn(clusterID, nodeID),
 				hash, lastApplied, len(entries))
-			printEntryDetails(clusterID, nodeID, entries)
+			printEntries(clusterID, nodeID, entries)
 			existingHash, ok := hashMap[clusterID]
 			if !ok {
 				hashMap[clusterID] = hash
@@ -696,45 +745,21 @@ func checkLogDBEntriesSynced(t *testing.T, nodes []*testNode) {
 		}
 	}
 	if len(notSynced) > 0 {
-		logCluster(nodes, notSynced)
+		logCluster(te.nodehosts, notSynced)
 		t.Fatalf("%d clusters failed to have logDB synced, %v",
 			len(notSynced), notSynced)
 	}
 }
 
-func logCluster(nodes []*testNode, clusterIDMap map[uint64]bool) {
-	for _, n := range nodes {
-		nh := n.nh
-		for _, rn := range nh.Clusters() {
-			clusterID := rn.ClusterID()
-			_, ok := clusterIDMap[clusterID]
-			if ok {
-				plog.Infof("%s rn.lastApplied %d",
-					dn(rn.ClusterID(), rn.NodeID()),
-					rn.GetLastApplied())
-				rn.DumpRaftInfoToLog()
-			}
-		}
-	}
+func (te *testEnv) checkNodeHostSM(t *testing.T) {
+	te.checkStateMachine(t, te.nodehosts)
 }
 
-func logClusterToRepair(cr []clusterRepair, tick uint64) {
-	plog.Infof("cluster to repair info, tick %d", tick)
-	for _, c := range cr {
-		plog.Infof("cluster id %d, config change idx %d, failed %v, ok %v, to start %v",
-			c.clusterID, c.cluster.ConfigChangeIndex, c.failedNodes, c.okNodes, c.nodesToStart)
-	}
+func (te *testEnv) checkDrummerSM(t *testing.T) {
+	te.checkStateMachine(t, te.drummers)
 }
 
-func logUnavailableCluster(cl []cluster, tick uint64) {
-	plog.Infof("unavailable cluster info, tick %d", tick)
-	for _, c := range cl {
-		plog.Infof("cluster id %d, config change idx %d, nodes %v",
-			c.ClusterID, c.ConfigChangeIndex, c.Nodes)
-	}
-}
-
-func checkStateMachine(t *testing.T, nodes []*testNode) {
+func (te *testEnv) checkStateMachine(t *testing.T, nodes []*testNode) {
 	hashMap := make(map[uint64]uint64)
 	sessionHashMap := make(map[uint64]uint64)
 	membershipMap := make(map[uint64]uint64)
@@ -789,81 +814,96 @@ func checkStateMachine(t *testing.T, nodes []*testNode) {
 		len(hashMap), len(sessionHashMap))
 }
 
-func removeNodeHostTestDirForTesting(n *testNode) {
-	idx := n.listIndex + 1
-	nn := fmt.Sprintf("nodehost-node-%d", idx)
-	nd := n.fs.PathJoin(monkeyTestWorkingDir, nn)
-	plog.Infof("monkey is going to delete nodehost dir at %s for testing", nd)
-	if err := n.fs.RemoveAll(nd); err != nil {
-		panic(err)
-	}
+func (te *testEnv) startNodeHostNodes() {
+	te.startNodes(te.nodehosts)
 }
 
-func createTestNodeLists(dl *mtAddressList) ([]*testNode, []*testNode) {
-	drummerDirList, nodehostDirList := getTestDirs(dl)
-	drummerNodes := make([]*testNode, len(dl.addressList))
-	nodehostNodes := make([]*testNode, len(dl.nodehostAddressList))
-	for i := uint64(0); i < uint64(len(dl.addressList)); i++ {
-		fs := dragonboat.GetTestFS()
-		drummerNodes[i] = &testNode{
-			listIndex:          i,
-			stopped:            true,
-			dir:                fs.PathJoin(monkeyTestWorkingDir, drummerDirList[i]),
-			nodeType:           nodeTypeDrummer,
-			partitionStartTime: make(map[uint64]struct{}),
-			partitionEndTime:   make(map[uint64]struct{}),
-			fs:                 fs,
-			switchDB:           getSwitchDB(),
-		}
-		removeMonkeyTestDir(fs)
-	}
-	for i := uint64(0); i < uint64(len(dl.nodehostAddressList)); i++ {
-		fs := dragonboat.GetTestFS()
-		nodehostNodes[i] = &testNode{
-			listIndex:          i,
-			stopped:            true,
-			dir:                fs.PathJoin(monkeyTestWorkingDir, nodehostDirList[i]),
-			nodeType:           nodeTypeNodehost,
-			partitionStartTime: make(map[uint64]struct{}),
-			partitionEndTime:   make(map[uint64]struct{}),
-			fs:                 fs,
-			switchDB:           getSwitchDB(),
-		}
-		removeMonkeyTestDir(fs)
-	}
-	return drummerNodes, nodehostNodes
+func (te *testEnv) startDrummerNodes() {
+	te.startNodes(te.drummers)
 }
 
-func startTestNodes(nodes []*testNode, dl *mtAddressList) {
-	for _, node := range nodes {
-		if !node.Running() {
-			node.Start(dl)
+func (te *testEnv) startNodes(nodes []*testNode) {
+	for _, n := range nodes {
+		if !n.isRunning() {
+			n.start(te.ts)
 		}
 	}
 }
 
-func stopTestNodes(nodes []*testNode) {
-	for _, node := range nodes {
-		plog.Infof("going to stop test %s %d", node.nodeType, node.listIndex)
-		if node.Running() {
-			node.Stop()
-		} else {
-			plog.Infof("%s %d is not running, will not call stop on it",
-				node.nodeType, node.listIndex)
+func (te *testEnv) stopNodeHostNodes() {
+	te.stopNodes(te.nodehosts)
+}
+
+func (te *testEnv) stopDrummerNodes() {
+	te.stopNodes(te.drummers)
+}
+
+func (te *testEnv) stopNodes(nodes []*testNode) {
+	for _, n := range nodes {
+		if n.isRunning() {
+			n.stop()
 		}
 	}
+}
+
+func (te *testEnv) waitForNodeHosts(seconds uint64) {
+	waitForStableNodes(te.nodehosts, seconds)
+}
+
+func (te *testEnv) waitForDrummers(seconds uint64) {
+	waitForStableNodes(te.drummers, seconds)
 }
 
 func waitForStableNodes(nodes []*testNode, seconds uint64) bool {
 	waitInBetweenSecond := time.Duration(3)
 	time.Sleep(waitInBetweenSecond * time.Second)
+	tryWait := func(nodes []*testNode, seconds uint64) bool {
+		waitMilliseconds := seconds * 1000
+		totalWait := uint64(0)
+		var nodeReady bool
+		var leaderReady bool
+		for !nodeReady || !leaderReady {
+			nodeReady = true
+			leaderReady = true
+			leaderMap := make(map[uint64]bool)
+			clusterSet := make(map[uint64]bool)
+			time.Sleep(100 * time.Millisecond)
+			totalWait += 100
+			if totalWait >= waitMilliseconds {
+				return false
+			}
+			for _, node := range nodes {
+				if node == nil || node.nh == nil {
+					continue
+				}
+				nh := node.nh
+				clusters := nh.Clusters()
+				for _, rn := range clusters {
+					clusterSet[rn.ClusterID()] = true
+					isLeader := rn.IsLeader()
+					isFollower := rn.IsFollower()
+					if !isLeader && !isFollower {
+						nodeReady = false
+					}
+
+					if isLeader {
+						leaderMap[rn.ClusterID()] = true
+					}
+				}
+			}
+			if len(leaderMap) != len(clusterSet) {
+				leaderReady = false
+			}
+		}
+		return true
+	}
 	for {
-		done := tryWaitForStableNodes(nodes, seconds)
+		done := tryWait(nodes, seconds)
 		if !done {
 			return false
 		}
 		time.Sleep(waitInBetweenSecond * time.Second)
-		done = tryWaitForStableNodes(nodes, seconds)
+		done = tryWait(nodes, seconds)
 		if done {
 			return true
 		}
@@ -871,160 +911,81 @@ func waitForStableNodes(nodes []*testNode, seconds uint64) bool {
 	}
 }
 
-func tryWaitForStableNodes(nodes []*testNode, seconds uint64) bool {
-	waitMilliseconds := seconds * 1000
-	totalWait := uint64(0)
-	var nodeReady bool
-	var leaderReady bool
-	for !nodeReady || !leaderReady {
-		nodeReady = true
-		leaderReady = true
-		leaderMap := make(map[uint64]bool)
-		clusterSet := make(map[uint64]bool)
-		time.Sleep(100 * time.Millisecond)
-		totalWait += 100
-		if totalWait >= waitMilliseconds {
-			return false
-		}
-		for _, node := range nodes {
-			if node == nil || node.nh == nil {
-				continue
-			}
-			nh := node.nh
-			clusters := nh.Clusters()
-			for _, rn := range clusters {
-				clusterSet[rn.ClusterID()] = true
-				isLeader := rn.IsLeader()
-				isFollower := rn.IsFollower()
-				if !isLeader && !isFollower {
-					nodeReady = false
-				}
-
-				if isLeader {
-					leaderMap[rn.ClusterID()] = true
-				}
-			}
-		}
-		if len(leaderMap) != len(clusterSet) {
-			leaderReady = false
-		}
-	}
-
-	return true
-}
-
-func compactNodes(nodes []*testNode) {
-	for _, node := range nodes {
-		if node.Running() {
-			node.compact()
-		}
-	}
-}
-
-func brutalMonkeyPlay(nodehosts []*testNode,
-	drummerNodes []*testNode, low int64, high int64) {
+func (te *testEnv) brutalMonkeyPlay() {
 	tt := rand.Uint64() % 3
 	nodes := make([]*testNode, 0)
 	if tt == 0 || tt == 2 {
-		nodes = append(nodes, nodehosts...)
+		nodes = append(nodes, te.nodehosts...)
 	}
 	if tt == 1 || tt == 2 {
-		nodes = append(nodes, drummerNodes...)
+		nodes = append(nodes, te.drummers...)
 	}
-	for _, node := range nodes {
-		if !node.IsPartitionTestNode() && node.Running() {
-			node.Stop()
-			plog.Infof("monkey brutally stopped %s %d", node.nodeType, node.listIndex+1)
-			node.setNodeNext(low, high)
+	for _, n := range nodes {
+		if !n.isPartitionTestNode() && n.isRunning() {
+			n.stop()
+			plog.Infof("monkey brutally stopped %s %d", n.nodeType, n.index+1)
+			n.setNodeNext(te.low, te.high)
 		}
 	}
 }
 
-func monkeyPlay(nodes []*testNode, low int64, high int64,
-	lt uint64, deleteDataTested bool, dl *mtAddressList) bool {
-	now := time.Now().UnixNano()
-	for _, node := range nodes {
-		if !node.IsPartitionTestNode() {
-			// crash mode
-			if node.next == 0 {
-				node.setNodeNext(low, high)
-				continue
-			}
-			if now%100 == 0 {
-				compactNodes(nodes)
-			}
-			if node.next > now {
-				continue
-			}
-			if node.Running() {
-				plog.Infof("monkey is going to stop %s %d",
-					node.nodeType, node.listIndex+1)
-				node.Stop()
-				plog.Infof("monkey stopped %s %d", node.nodeType, node.listIndex+1)
-				if rand.Uint64()%5 == 0 && !deleteDataTested && lt < 800 {
-					plog.Infof("monkey is going to delete all data belongs to %s %d",
-						node.nodeType, node.listIndex+1)
-					removeNodeHostTestDirForTesting(node)
-					deleteDataTested = true
+func (te *testEnv) monkeyPlay() {
+	for _, nodes := range [][]*testNode{te.nodehosts, te.drummers} {
+		for _, n := range nodes {
+			if !n.isPartitionTestNode() {
+				// crash mode
+				if n.next == 0 {
+					n.setNodeNext(te.low, te.high)
+					continue
 				}
+				if n.next > te.second {
+					continue
+				}
+				if rand.Uint64()%100 == 0 && n.isRunning() {
+					n.compact()
+				}
+				if n.isRunning() {
+					plog.Infof("monkey will stop %s %d", n.nodeType, n.index+1)
+					n.stop()
+					plog.Infof("monkey stopped %s %d", n.nodeType, n.index+1)
+					if rand.Uint64()%5 == 0 &&
+						!n.isDrummerNode() && !te.deleteDataTested && te.second < 800 {
+						plog.Infof("monkey will delete all on %s %d", n.nodeType, n.index+1)
+						n.removeNodeHostDir()
+						te.deleteDataTested = true
+					}
+				} else {
+					plog.Infof("monkey will start %s %d", n.nodeType, n.index+1)
+					n.start(te.ts)
+					plog.Infof("monkey restarted %s %d", n.nodeType, n.index+1)
+				}
+				n.setNodeNext(te.low, te.high)
 			} else {
-				plog.Infof("monkey is going to start %s %d",
-					node.nodeType, node.listIndex+1)
-				node.Start(dl)
-				plog.Infof("monkey restarted %s %d", node.nodeType, node.listIndex+1)
-			}
-			node.setNodeNext(low, high)
-		} else {
-			// partition mode
-			_, ps := node.partitionStartTime[lt]
-			if ps {
-				plog.Infof("monkey is going to partition the node %d",
-					node.listIndex+1)
-				node.nh.PartitionNode()
-			}
-			_, pe := node.partitionEndTime[lt]
-			if pe {
-				plog.Infof("monkey is going to restore node %d from partition mode",
-					node.listIndex+1)
-				node.nh.RestorePartitionedNode()
+				// partition mode
+				if _, ps := n.partitionStartTime[te.second]; ps {
+					plog.Infof("monkey partitioning the node %d", n.index+1)
+					n.nh.PartitionNode()
+				}
+				if _, pe := n.partitionEndTime[te.second]; pe {
+					plog.Infof("monkey restoring node %d from partition mode", n.index+1)
+					n.nh.RestorePartitionedNode()
+				}
 			}
 		}
 	}
-	return deleteDataTested
 }
 
-func stopDrummerActivity(nodehostNodes []*testNode, drummerNodes []*testNode) {
-	for _, n := range nodehostNodes {
-		n.drummerNodeHost.StopNodeHostInfoReporter()
+func (te *testEnv) stopDrummerActivity() {
+	for _, n := range te.nodehosts {
+		n.drummerClient.StopNodeHostInfoReporter()
 	}
-	for _, n := range drummerNodes {
+	for _, n := range te.drummers {
 		n.stopper.Stop()
 		n.stopper = nil
 		n.drummer.Stop()
 		n.drummer.ctx, n.drummer.cancel = context.WithCancel(context.Background())
 		n.drummerStopped = true
 	}
-}
-
-func getLeaderDrummerIndex(nodes []*testNode) int {
-	for idx, n := range nodes {
-		n.MustBeDrummerNode()
-		if n.Running() && n.drummer.isLeaderDrummerNode() {
-			return idx
-		}
-	}
-	return -1
-}
-
-func moreThanOneDrummerLeader(nodes []*testNode) bool {
-	count := 0
-	for _, n := range nodes {
-		n.MustBeDrummerNode()
-		if n.Running() && n.drummer.isLeaderDrummerNode() {
-			count++
-		}
-	}
-	return count >= 2
 }
 
 func getDrummerClient(drummerAddressList []string) (pb.DrummerClient, *client.Connection) {
@@ -1041,29 +1002,14 @@ func getDrummerClient(drummerAddressList []string) (pb.DrummerClient, *client.Co
 	return nil, nil
 }
 
-func submitTestJobs(count uint64,
-	appname string, dl *mtAddressList) bool {
-	for i := 0; i < 5; i++ {
-		dc, connection := getDrummerClient(dl.apiAddressList)
-		if dc == nil {
-			continue
-		}
-		defer connection.Close()
-		if err := submitMultipleTestClusters(count, appname, dc); err == nil {
-			return true
-		}
-	}
-	return false
-}
-
-func submitMultipleTestClusters(count uint64,
-	appname string, dclient pb.DrummerClient) error {
+func submitClusters(count uint64,
+	name string, dclient pb.DrummerClient) error {
 	plog.Infof("going to send cluster info to drummer")
 	for i := uint64(0); i < count; i++ {
 		clusterID := i + 1
 		ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 		if err := SubmitCreateDrummerChange(ctx,
-			dclient, clusterID, []uint64{2345, 6789, 9876}, appname); err != nil {
+			dclient, clusterID, []uint64{2345, 6789, 9876}, name); err != nil {
 			plog.Errorf("failed to submit drummer change, cluster %d, %v",
 				clusterID, err)
 			cancel()
@@ -1091,41 +1037,51 @@ func submitMultipleTestClusters(count uint64,
 	return nil
 }
 
-func checkClustersAreAccessible(t *testing.T,
-	clusterCount uint64, dl *mtAddressList) {
+func (te *testEnv) submitJobs(count uint64, name string) bool {
+	for i := 0; i < 5; i++ {
+		dc, connection := getDrummerClient(te.ts.drummerAPIAddrs)
+		if dc == nil {
+			continue
+		}
+		defer connection.Close()
+		if err := submitClusters(count, name, dc); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+func (te *testEnv) checkClustersAreAccessible(t *testing.T, count uint64) {
 	synced := make(map[uint64]struct{})
-	count := 0
-	for count < 100 {
-		for clusterID := uint64(1); clusterID <= clusterCount; clusterID++ {
-			_, ok := synced[clusterID]
-			if ok {
+	for iteration := 0; iteration < 100; iteration++ {
+		for clusterID := uint64(1); clusterID <= count; clusterID++ {
+			if _, ok := synced[clusterID]; ok {
 				continue
 			}
 			plog.Infof("checking cluster availability for %d", clusterID)
 			ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
-			if makeMonkeyTestRequests(ctx, clusterID, dl, false) {
+			if te.makeMonkeyRequests(ctx, clusterID, false) {
 				synced[clusterID] = struct{}{}
 			}
 			cancel()
 		}
-		if uint64(len(synced)) == clusterCount {
+		if uint64(len(synced)) == count {
 			return
 		}
 		time.Sleep(time.Second)
-		count++
 	}
-	t.Fatalf("%d clusters are not accessible", clusterCount-uint64(len(synced)))
+	t.Fatalf("%d clusters are not accessible", count-uint64(len(synced)))
 }
 
-func getRequestAddress(ctx context.Context,
-	clusterID uint64, dl *mtAddressList) (string, string, bool) {
+func (te *testEnv) getRequestAddress(ctx context.Context,
+	clusterID uint64) (string, string, bool) {
 	p := client.NewDrummerConnectionPool()
 	defer p.Close()
 	var conn *client.Connection
 	var err error
-	for idx := 0; idx < len(dl.apiAddressList); idx++ {
+	for idx := 0; idx < len(te.ts.drummerAPIAddrs); idx++ {
 		cctx, cancel := context.WithTimeout(ctx, defaultTestTimeout)
-		addr := dl.apiAddressList[idx]
+		addr := te.ts.drummerAPIAddrs[idx]
 		conn, err = p.GetInsecureConnection(cctx, addr)
 		cancel()
 		if err != nil {
@@ -1172,7 +1128,8 @@ func getRequestAddress(ctx context.Context,
 	return writeNodeAddress, readNodeAddress, true
 }
 
-func getMonkeyTestClients(ctx context.Context, p *client.Pool, writeAddress string,
+func getMonkeyTestClients(ctx context.Context,
+	p *client.Pool, writeAddress string,
 	readAddress string) (mr.NodehostAPIClient, mr.NodehostAPIClient) {
 	writeConn, err := p.GetInsecureConnection(ctx, writeAddress)
 	if err != nil {
@@ -1244,17 +1201,16 @@ func makeReadRequest(ctx context.Context,
 	return true
 }
 
-func makeMonkeyTestRequests(ctx context.Context,
-	clusterID uint64, dl *mtAddressList, repeated bool) bool {
-	writeAddress, readAddress, ok := getRequestAddress(ctx, clusterID, dl)
+func (te *testEnv) makeMonkeyRequests(ctx context.Context,
+	clusterID uint64, repeated bool) bool {
+	writeAddr, readAddr, ok := te.getRequestAddress(ctx, clusterID)
 	if !ok {
 		plog.Warningf("failed to get read write address")
 		return false
 	}
 	pool := client.NewConnectionPool()
 	defer pool.Close()
-	readClient, writeClient := getMonkeyTestClients(ctx,
-		pool, writeAddress, readAddress)
+	readClient, writeClient := getMonkeyTestClients(ctx, pool, writeAddr, readAddr)
 	if writeClient == nil || readClient == nil {
 		plog.Warningf("failed to get read write client")
 		return false
@@ -1285,24 +1241,29 @@ func makeMonkeyTestRequests(ctx context.Context,
 	return true
 }
 
-func getRandomClusterID(size uint64) uint64 {
-	return (rand.Uint64() % size) + 1
+func (te *testEnv) stopWorkers() {
+	te.stopper.Stop()
 }
 
-func startFastWorker(stopper *syncutil.Stopper, dl *mtAddressList) {
-	stopper.RunWorker(func() {
+func (te *testEnv) startFastWorker() {
+	te.stopper.RunWorker(func() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-stopper.ShouldStop():
+			case <-te.stopper.ShouldStop():
 				return
+			default:
+			}
+			select {
 			case <-ticker.C:
 				for i := 0; i < 100; i++ {
 					if cont := func() bool {
-						ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
+						timeout := defaultTestTimeout
+						clusterID := client.HardWorkerTestClusterID
+						ctx, cancel := context.WithTimeout(context.Background(), timeout)
 						defer cancel()
-						if !makeMonkeyTestRequests(ctx, client.HardWorkerTestClusterID, dl, false) {
+						if !te.makeMonkeyRequests(ctx, clusterID, false) {
 							return false
 						}
 						return true
@@ -1315,27 +1276,27 @@ func startFastWorker(stopper *syncutil.Stopper, dl *mtAddressList) {
 	})
 }
 
-func startTestRequestWorkers(stopper *syncutil.Stopper, dl *mtAddressList) {
+func (te *testEnv) startRequestWorkers() {
 	for i := uint64(0); i < testClientWorkerCount; i++ {
-		stopper.RunWorker(func() {
-			pt := time.NewTicker(1 * time.Second)
+		te.stopper.RunWorker(func() {
 			tick := 0
 			lastDone := 0
-			defer pt.Stop()
+			ticker := time.NewTicker(1 * time.Second)
+			defer ticker.Stop()
 			for {
 				select {
-				case <-stopper.ShouldStop():
+				case <-te.stopper.ShouldStop():
 					return
 				default:
 				}
 				select {
-				case <-pt.C:
+				case <-ticker.C:
 					tick++
 					if tick-lastDone > 5 {
+						timeout := 3 * defaultTestTimeout
 						clusterID := getRandomClusterID(numOfClusters)
-						ctx, cancel := context.WithTimeout(context.Background(),
-							3*defaultTestTimeout)
-						if makeMonkeyTestRequests(ctx, clusterID, dl, true) {
+						ctx, cancel := context.WithTimeout(context.Background(), timeout)
+						if te.makeMonkeyRequests(ctx, clusterID, true) {
 							lastDone = tick
 						}
 						cancel()
@@ -1346,7 +1307,7 @@ func startTestRequestWorkers(stopper *syncutil.Stopper, dl *mtAddressList) {
 	}
 }
 
-func setRandomPacketDropHook(nodes []*testNode, threshold uint64) {
+func (te *testEnv) setRandomPacketDropHook(threshold uint64) {
 	// both funcs below return a shouldSend boolean value
 	hook := func(batch raftpb.MessageBatch) (raftpb.MessageBatch, bool) {
 		pd := random.NewProbability(1000 * threshold)
@@ -1380,36 +1341,28 @@ func setRandomPacketDropHook(nodes []*testNode, threshold uint64) {
 		}
 		return c, true
 	}
-	for _, n := range nodes {
+	for _, n := range te.nodehosts {
 		n.nh.SetTransportDropBatchHook(hook)
 		n.nh.SetPreStreamChunkSendHook(snapshotHook)
 	}
-}
-
-func disableRandomDelay() {
-	if err := os.Setenv("IOEI", "disabled"); err != nil {
-		panic(err)
+	for _, n := range te.drummers {
+		n.nh.SetTransportDropBatchHook(hook)
+		n.nh.SetPreStreamChunkSendHook(snapshotHook)
 	}
+
 }
 
-func disableClusterRandomDelay(clusterID uint64) {
-	pcs := fmt.Sprintf("IOEI-%d", clusterID)
-	if err := os.Setenv(pcs, "disabled"); err != nil {
-		panic(err)
-	}
-}
-
-func drummerMustBeReady(t *testing.T, nodes []*testNode) {
-	drummerLeaderChecked := false
-	for _, node := range nodes {
-		if !node.Running() {
+func (te *testEnv) checkDrummerIsReady(t *testing.T) {
+	leaderChecked := false
+	for _, n := range te.drummers {
+		if !n.isRunning() {
 			t.Fatalf("drummer node not running?")
 		}
-		if !node.IsDrummerLeader() {
+		if !n.isDrummerLeader() {
 			continue
 		}
-		drummerLeaderChecked = true
-		mc, err := node.GetMultiCluster()
+		leaderChecked = true
+		mc, err := n.getClusters()
 		if err != nil {
 			t.Fatalf("failed to get multiCluster from drummer")
 		}
@@ -1418,13 +1371,13 @@ func drummerMustBeReady(t *testing.T, nodes []*testNode) {
 			t.Fatalf("cluster count %d, want %d", mc.size(), numOfClusters)
 		}
 	}
-	if !drummerLeaderChecked {
+	if !leaderChecked {
 		t.Fatalf("drummer leader is not ready")
 	}
 }
 
-func checkHeapSize(t *testing.T, tt uint64) {
-	if tt > testIdleTime && tt%10 == 0 {
+func (te *testEnv) checkHeapSize(t *testing.T) {
+	if te.second > testIdleTime && te.second%10 == 0 {
 		var memStats runtime.MemStats
 		runtime.ReadMemStats(&memStats)
 		if memStats.HeapAlloc > maxAllowedHeapSize {
@@ -1434,41 +1387,32 @@ func checkHeapSize(t *testing.T, tt uint64) {
 	}
 }
 
-func monkeyTest(t *testing.T,
-	nodehostNodes []*testNode, drummerNodes []*testNode, dl *mtAddressList) {
-	low := nodeUpTimeLowMillisecond
-	high := nodeUpTimeHighMillisecond
-	secondToRun := monkeyTestSecondToRun
+func (te *testEnv) monkeyTest(t *testing.T) {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
-	lt := uint64(0)
-	deleteDataTested := true
-	brutalMonkeyTime := rand.Uint64()%200 + secondToRun/2
-	for i := uint64(0); i < secondToRun; i++ {
-		checkHeapSize(t, i)
+	brutalMonkeyTime := rand.Uint64()%200 + monkeyTestSecondToRun/2
+	for i := uint64(0); i < monkeyTestSecondToRun; i++ {
+		te.checkHeapSize(t)
 		select {
 		case <-ticker.C:
-			lt++
-			if lt < testIdleTime {
+			te.second++
+			if te.second < testIdleTime {
 				continue
 			}
-			if lt == brutalMonkeyTime {
-				plog.Infof("brutal monkey play is going to start, lt %d", lt)
-				brutalMonkeyPlay(nodehostNodes, drummerNodes, low, high)
+			if te.second == brutalMonkeyTime {
+				plog.Infof("brutal monkey play is going to start, time %d", te.second)
+				te.brutalMonkeyPlay()
 			}
-			deleteDataTested = monkeyPlay(nodehostNodes,
-				low, high, lt, deleteDataTested, dl)
-			plog.Infof("nodehost node monkey play completed, lt %d", lt)
-			monkeyPlay(drummerNodes, low, high, lt, true, dl)
-			plog.Infof("drummer node monkey play completed, lt %d", lt)
+			plog.Infof("will run monkey play on nodehosts")
+			te.monkeyPlay()
+			plog.Infof("nodehost node monkey play completed, time %d", te.second)
 		}
 	}
 }
 
-func checkClusterState(t *testing.T,
-	nodehostNodes []*testNode, drummerNodes []*testNode) {
-	node := drummerNodes[rand.Uint64()%uint64(len(drummerNodes))]
-	mc, tick, err := node.GetMultiClusterAndTick()
+func (te *testEnv) checkClusterState(t *testing.T) {
+	node := te.drummers[rand.Uint64()%uint64(len(te.drummers))]
+	mc, tick, err := node.getClustersAndTick()
 	if err != nil {
 		t.Fatalf("failed to get multiCluster, %v", err)
 	}
@@ -1477,7 +1421,6 @@ func checkClusterState(t *testing.T,
 			mc.size(), numOfClusters)
 	}
 	toFixCluster := make(map[uint64]bool)
-	// all cluster are ok - no dead node, no failed to start node etc.
 	r := mc.getClusterForRepair(tick)
 	if len(r) != 0 {
 		for _, cr := range r {
@@ -1495,104 +1438,101 @@ func checkClusterState(t *testing.T,
 		logUnavailableCluster(uc, tick)
 	}
 	if len(toFixCluster) > 0 {
-		logCluster(nodehostNodes, toFixCluster)
+		logCluster(te.nodehosts, toFixCluster)
 	}
 }
 
-func drummerMonkeyTesting(t *testing.T, appname string) {
+func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	defer func() {
 		if r := recover(); r != nil || t.Failed() {
 			plog.Infof("test failed, going to save the monkey test dir")
-			saveMonkeyTestDir()
+			saveTestDir()
 			panic("core dump is required")
 		} else {
-			removeMonkeyTestDir(dragonboat.GetTestFS())
+			removeTestDir(dragonboat.GetTestFS())
 		}
 	}()
 	plog.Infof("test pid %d", os.Getpid())
 	plog.Infof("snapshot disabled in monkey test %t, less snapshot %t",
-		snapshotDisabledInRaftConfig(), lessSnapshotTest())
-	dl := getTestAddrList()
-	drummerNodes, nodehostNodes := createTestNodeLists(dl)
-	startTestNodes(drummerNodes, dl)
-	startTestNodes(nodehostNodes, dl)
+		snapshotDisabledInConfig(), lessSnapshotTest())
+	ts := newTestSetup(to.port)
+	te := createTestNodes(ts)
+	te.startDrummerNodes()
+	te.startNodeHostNodes()
 	defer func() {
 		plog.Infof("cleanup called, going to stop drummer nodes")
-		stopTestNodes(drummerNodes)
+		te.stopDrummerNodes()
 		plog.Infof("cleanup called, drummer nodes stopped")
 	}()
 	defer func() {
 		plog.Infof("cleanup called, going to stop nodehost nodes")
-		stopTestNodes(nodehostNodes)
+		te.stopNodeHostNodes()
 		plog.Infof("cleanup called, nodehost nodes stopped")
 	}()
 	plog.Infof("waiting for drummer nodes to stablize")
-	waitForStableNodes(drummerNodes, waitForStableSecond)
+	te.waitForDrummers(waitForStableSecond)
 	plog.Infof("waiting for nodehost nodes to stablize")
-	waitForStableNodes(nodehostNodes, waitForStableSecond)
+	te.waitForNodeHosts(waitForStableSecond)
 	plog.Infof("all nodes are ready")
 	// the first nodehost will use partition mode, all other nodes will use crash
 	// mode for testing
 	partitionTestDuration := monkeyTestSecondToRun - 100
-	nodehostNodes[0].SetupPartitionTests(partitionTestDuration)
+	te.nodehosts[0].setupPartitionTests(partitionTestDuration)
 	// with 50% chance, we let more than one nodehostNode to do partition test
 	if rand.Uint64()%2 == 0 {
-		nodehostNodes[1].SetupPartitionTests(partitionTestDuration)
+		te.nodehosts[1].setupPartitionTests(partitionTestDuration)
 	}
 	// start the cluster
 	reportInterval := NodeHostInfoReportSecond
 	time.Sleep(time.Duration(3*reportInterval) * time.Second)
 	plog.Infof("going to submit jobs")
-	if !submitTestJobs(numOfClusters, appname, dl) {
+	if !te.submitJobs(numOfClusters, name) {
 		t.Fatalf("failed to submit the test job")
 	}
 	plog.Infof("jobs submitted, waiting for clusters to be launched")
 	waitTimeSec := (loopIntervalFactor + 7) * reportInterval
 	time.Sleep(time.Duration(waitTimeSec) * time.Second)
 	plog.Infof("going to check whether all clusters are launched")
-	drummerMustBeReady(t, drummerNodes)
+	te.checkDrummerIsReady(t)
 	plog.Infof("launched clusters checked")
 	// randomly drop some packet
-	setRandomPacketDropHook(drummerNodes, 1)
-	setRandomPacketDropHook(nodehostNodes, 1)
+	te.setRandomPacketDropHook(1)
 	// start a list of client workers that will make random write/read requests
 	// to the system
-	stopper := syncutil.NewStopper()
-	startTestRequestWorkers(stopper, dl)
+	te.startRequestWorkers()
 	if lessSnapshotTest() {
 		plog.Infof("going to start fast worker")
 		disableClusterRandomDelay(client.HardWorkerTestClusterID)
-		startFastWorker(stopper, dl)
+		te.startFastWorker()
 	}
 	// start the linearizability checker manager
 	checker := lcm.NewCoordinator(context.Background(),
-		LCMWorkerCount, 1, dl.apiAddressList)
+		LCMWorkerCount, 1, te.ts.drummerAPIAddrs)
 	checker.Start()
 	// start monkeys
-	monkeyTest(t, nodehostNodes, drummerNodes, dl)
+	te.monkeyTest(t)
 	plog.Infof("going to stop the test clients")
 	// stop all client workers
-	stopper.Stop()
+	te.stopWorkers()
 	plog.Infof("test clients stopped")
 	disableRandomDelay()
 	plog.Infof("random large delay disabled")
 	// restore all nodehost instances and wait for long enough
-	startTestNodes(nodehostNodes, dl)
-	startTestNodes(drummerNodes, dl)
-	setRandomPacketDropHook(nodehostNodes, 0)
-	setRandomPacketDropHook(drummerNodes, 0)
+	te.startNodeHostNodes()
+	te.startDrummerNodes()
+	te.setRandomPacketDropHook(0)
 	plog.Infof("all nodes restarted")
 	waitTimeSec = loopIntervalSecond * 23
 	time.Sleep(time.Duration(waitTimeSec) * time.Second)
-	drummerMustBeReady(t, drummerNodes)
+	te.checkDrummerIsReady(t)
 	// stop the NodeHostInfo reporter on nodehost
 	// stop the drummer server
 	plog.Infof("going to stop drummer activities")
-	stopDrummerActivity(nodehostNodes, drummerNodes)
+	te.stopDrummerActivity()
 	time.Sleep(50 * time.Second)
 	plog.Infof("going to check drummer cluster info")
 	// make sure the cluster is stable with 3 raft nodes
-	checkClusterState(t, nodehostNodes, drummerNodes)
+	te.checkClusterState(t)
 	// dump the linearizability checker history data to disk
 	checker.Stop()
 	checker.SaveAsJepsenLog(lcmlog)
@@ -1600,27 +1540,27 @@ func drummerMonkeyTesting(t *testing.T, appname string) {
 	plog.Infof("dumping memory profile to disk")
 	saveHeapProfile("drummermt_mem.pprof")
 	plog.Infof("going to restart drummer servers")
-	stopTestNodes(drummerNodes)
-	startTestNodes(drummerNodes, dl)
+	te.stopDrummerNodes()
+	te.startDrummerNodes()
 	time.Sleep(30 * time.Second)
-	checkPartitionedNodeHost(t, nodehostNodes)
+	te.checkPartitionedNodeHost(t)
 	plog.Infof("going to check nodehost cluster state")
-	waitForStableNodes(nodehostNodes, waitForStableSecond)
+	te.waitForNodeHosts(waitForStableSecond)
 	plog.Infof("clusters stable check done")
-	checkNodeHostSynced(t, nodehostNodes)
+	te.checkNodeHostsSynced(t)
 	plog.Infof("sync check done")
-	checkStateMachine(t, nodehostNodes)
+	te.checkNodeHostSM(t)
 	plog.Infof("state machine check done")
-	waitForStableNodes(drummerNodes, waitForStableSecond)
+	te.waitForDrummers(waitForStableSecond)
 	plog.Infof("drummer nodes stable check done")
-	checkNodeHostSynced(t, drummerNodes)
+	te.checkDrummersSynced(t)
 	plog.Infof("drummer sync check done")
-	checkStateMachine(t, drummerNodes)
+	te.checkDrummerSM(t)
 	plog.Infof("check logdb entries")
-	checkLogDBEntriesSynced(t, nodehostNodes)
+	te.checkLogDBSynced(t)
 	plog.Infof("going to check in mem log sizes")
-	checkRateLimiterState(t, nodehostNodes)
+	te.checkRateLimiterState(t)
 	plog.Infof("going to check cluster accessibility")
-	checkClustersAreAccessible(t, numOfClusters, dl)
+	te.checkClustersAreAccessible(t, numOfClusters)
 	plog.Infof("all done, test is going to return.")
 }
