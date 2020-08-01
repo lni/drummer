@@ -19,6 +19,7 @@ package drummer
 import (
 	"flag"
 	"math/rand"
+	"os"
 	"runtime"
 	"testing"
 
@@ -84,17 +85,37 @@ func runDrummerMonkeyTest(t *testing.T, name string) {
 	drummerMonkeyTesting(t, to, name)
 }
 
-func TestClusterCanSurviveDrummerMonkeyPlay(t *testing.T) {
+func TestMonkeyPlay(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	runDrummerMonkeyTest(t, "kvtest")
 }
 
-func TestConcurrentClusterCanSurviveDrummerMonkeyPlay(t *testing.T) {
+func TestMonkeyPlayConcurrentSM(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	runDrummerMonkeyTest(t, "concurrentkv")
 }
 
-func TestOnDiskClusterCanSurviveDrummerMonkeyPlay(t *testing.T) {
+func TestMonkeyPlayOnDiskSM(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	runDrummerMonkeyTest(t, "diskkv")
+}
+
+func isTravisCronJob() bool {
+	// see doc at
+	// https://docs.travis-ci.com/user/environment-variables/
+	return os.Getenv("TRAVIS_EVENT_TYPE") == "cron"
+}
+
+func TestMonkeyPlayTravis(t *testing.T) {
+	if !isTravisCronJob() {
+		t.Skip("Not a travis cron job, test skipped")
+	}
+	TestMonkeyPlay(t)
+}
+
+func TestMonkeyPlayOnDiskSMTravis(t *testing.T) {
+	if !isTravisCronJob() {
+		t.Skip("Not a travis cron job, test skipped")
+	}
+	TestMonkeyPlayOnDiskSM(t)
 }
