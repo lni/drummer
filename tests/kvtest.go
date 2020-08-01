@@ -35,7 +35,7 @@ import (
 	"time"
 
 	sm "github.com/lni/dragonboat/v3/statemachine"
-	"github.com/lni/drummer/v3/kvpb"
+	"github.com/lni/drummer/v3/kv"
 	"github.com/lni/goutils/random"
 )
 
@@ -113,7 +113,7 @@ func NewKVTest(clusterID uint64, nodeID uint64) sm.IStateMachine {
 	}
 	s.pbkvPool = &sync.Pool{
 		New: func() interface{} {
-			return &kvpb.PBKV{}
+			return &kv.KV{}
 		},
 	}
 
@@ -153,11 +153,11 @@ func (s *KVTest) Update(data []byte) (sm.Result, error) {
 		panic("update called after Close()")
 	}
 	generateRandomDelay()
-	dataKv := s.pbkvPool.Get().(*kvpb.PBKV)
-	if err := dataKv.Unmarshal(data); err != nil {
+	dataKv := s.pbkvPool.Get().(*kv.KV)
+	if err := dataKv.UnmarshalBinary(data); err != nil {
 		panic(err)
 	}
-	s.updateStore(dataKv.GetKey(), dataKv.GetVal())
+	s.updateStore(dataKv.Key, dataKv.Val)
 	s.pbkvPool.Put(dataKv)
 	return sm.Result{Value: uint64(len(data))}, nil
 }

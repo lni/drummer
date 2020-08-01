@@ -1,0 +1,6 @@
+package kv
+
+type KV struct {
+  Key text
+  Val text
+}

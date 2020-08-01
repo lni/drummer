@@ -17,10 +17,12 @@ PKGNAME := github.com/lni/drummer/v3
 DRUMMER_MONKEY_TEST_BIN := drummer-monkey-testing
 DRUMMER_MONKEY_TEST_TAGS := dragonboat_monkeytest
 PORCUPINE_CHECKER_BIN := porcupine-checker-bin
-MONKEY_TEST_NAME := TestClusterCanSurviveDrummerMonkeyPlay
-ONDISK_MONKEY_TEST_NAME := TestOnDiskClusterCanSurviveDrummerMonkeyPlay
+MONKEY_TEST_NAME := TestMonkeyPlay
+ONDISK_MONKEY_TEST_NAME := TestMonkeyPlayOnDiskSM 
 JEPSEN_FILE := drummer-lcm.jepsen
 EDN_FILE := drummer-lcm.edn
+
+TEST_OPTION := -test.v -test.timeout 3200s
 
 $(DRUMMER_MONKEY_TEST_BIN):
 	$(GO) test $(RACE) -tags="$(DRUMMER_MONKEY_TEST_TAGS)" -c -o $@ $(PKGNAME)
@@ -42,10 +44,31 @@ test:
 test-tests:
 	$(GO) test -count=1 -v -tags="$(DRUMMER_MONKEY_TEST_TAGS)" $(PKGNAME)/tests
 
+.PHONY: runtest
+runtest:
+	./$(DRUMMER_MONKEY_TEST_BIN) $(TEST_OPTION) $(SILENT) -test.run $(TARGET)
+
 .PHONY: monkey-test
-monkey-test: TARGET=$(MONKEY_TEST_NAME)
+monkey-test: TARGET := $(MONKEY_TEST_NAME)
 monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
-	./$(DRUMMER_MONKEY_TEST_BIN) -test.v -test.timeout 9999s -test.run $(TARGET)
+monkey-test: runtest
+
+.PHONY: ondisk-monkey-test
+ondisk-monkey-test: TARGET := $(ONDISK_MONKEY_TEST_NAME)
+ondisk-monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
+ondisk-monkey-test: runtest
+
+.PHONY: monkey-test-travis
+monkey-test-travis: override SILENT := -silent
+monkey-test-travis: override TARGET := TestMonkeyPlayTravis
+monkey-test-travis: $(DRUMMER_MONKEY_TEST_BIN)
+monkey-test-travis: runtest
+
+.PHONY: ondisk-monkey-test-travis
+ondisk-monkey-test-travis: override SILENT := --silent
+ondisk-monkey-test-travis: override TARGET := TestMonkeyPlayOnDiskSMTravis
+ondisk-monkey-test-travis: $(DRUMMER_MONKEY_TEST_BIN)
+ondisk-monkey-test-travis: runtest
 
 .PHONY: race-monkey-test
 race-monkey-test: RACE=-race
@@ -54,11 +77,6 @@ race-monkey-test: monkey-test
 .PHONY: race-ondisk-monkey-test
 race-ondisk-monkey-test: RACE=-race
 race-ondisk-monkey-test: ondisk-monkey-test
-
-.PHONY: ondisk-monkey-test
-ondisk-monkey-test: TARGET=$(ONDISK_MONKEY_TEST_NAME)
-ondisk-monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
-	./$(DRUMMER_MONKEY_TEST_BIN) -test.v -test.timeout 9999s -test.run $(TARGET)
 
 .PHONY: clean
 clean:

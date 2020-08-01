@@ -50,7 +50,9 @@ func RemoveDrummerServer(ctx context.Context, client pb.DrummerClient,
 // SubmitCreateDrummerChange submits Drummer change used for defining clusters.
 func SubmitCreateDrummerChange(ctx context.Context, client pb.DrummerClient,
 	clusterID uint64, members []uint64, appName string) error {
-	checkClusterIDValue(clusterID)
+	if clusterID == 0 {
+		panic("invalid cluster ID")
+	}
 	if len(appName) == 0 {
 		panic("empty app name")
 	}
@@ -88,6 +90,12 @@ func GetClusterStates(ctx context.Context,
 	return client.GetClusterStates(ctx, req)
 }
 
+// GetNodeHostCollection returns nodehosts known to the Drummer.
+func GetNodeHostCollection(ctx context.Context,
+	client pb.DrummerClient) (*pb.NodeHostCollection, error) {
+	return client.GetNodeHostCollection(ctx, &pb.Empty{})
+}
+
 // SubmitRegions submits regions info to the Drummer server.
 func SubmitRegions(ctx context.Context,
 	client pb.DrummerClient, region pb.Regions) error {
@@ -100,16 +108,4 @@ func SubmitBootstrappped(ctx context.Context,
 	client pb.DrummerClient) error {
 	_, err := client.SetBootstrapped(ctx, &pb.Empty{})
 	return err
-}
-
-// GetNodeHostCollection returns nodehosts known to the Drummer.
-func GetNodeHostCollection(ctx context.Context,
-	client pb.DrummerClient) (*pb.NodeHostCollection, error) {
-	return client.GetNodeHostCollection(ctx, &pb.Empty{})
-}
-
-func checkClusterIDValue(clusterID uint64) {
-	if clusterID == 0 {
-		panic("cluster id must be specified and it can not be 0")
-	}
 }
