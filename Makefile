@@ -73,12 +73,16 @@ ondisk-monkey-test-travis: $(DRUMMER_MONKEY_TEST_BIN)
 ondisk-monkey-test-travis: runtest
 
 .PHONY: race-monkey-test
-race-monkey-test: RACE=-race
+race-monkey-test: override RACE := -race
 race-monkey-test: monkey-test
 
 .PHONY: race-ondisk-monkey-test
-race-ondisk-monkey-test: RACE=-race
+race-ondisk-monkey-test: override RACE := -race
 race-ondisk-monkey-test: ondisk-monkey-test
+
+.PHONY: race-monkey-test-travis
+race-monkey-test-travis: override RACE := -race
+race-monkey-test-travis: monkey-test-travis
 
 .PHONY: clean
 clean:
