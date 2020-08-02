@@ -63,11 +63,6 @@ func (spec *nodeHostSpec) hasLog(clusterID uint64, nodeID uint64) bool {
 	return ok
 }
 
-func (spec *nodeHostSpec) hasCluster(clusterID uint64) bool {
-	_, ok := spec.Clusters[clusterID]
-	return ok
-}
-
 func (spec *nodeHostSpec) available(currentTick uint64) bool {
 	return !EntityFailed(spec.Tick, currentTick)
 }
@@ -80,10 +75,6 @@ func newMultiNodeHost() *multiNodeHost {
 	return &multiNodeHost{
 		Nodehosts: make(map[string]*nodeHostSpec),
 	}
-}
-
-func (m *multiNodeHost) size() int {
-	return len(m.Nodehosts)
 }
 
 func (m *multiNodeHost) get(address string) *nodeHostSpec {

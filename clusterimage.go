@@ -337,11 +337,6 @@ func (mc *multiCluster) syncLeaderInfo(nhi pb.NodeHostInfo) {
 	}
 }
 
-func (mc *multiCluster) reset() {
-	mc.NodesToKill = mc.NodesToKill[:0]
-	mc.Clusters = make(map[uint64]*cluster)
-}
-
 func (mc *multiCluster) updateNodeTick(nhi pb.NodeHostInfo) {
 	for _, cluster := range nhi.ClusterInfo {
 		cid := cluster.ClusterId
