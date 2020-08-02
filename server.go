@@ -225,7 +225,7 @@ func (s *server) GetClusterStates(ctx context.Context,
 func waitDrummerRequestResult(ctx context.Context,
 	rs *dragonboat.RequestState) (*pb.Empty, error) {
 	select {
-	case r := <-rs.CompletedC:
+	case r := <-rs.AppliedC():
 		if r.Completed() {
 			return nil, nil
 		} else if r.Timeout() {
