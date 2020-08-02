@@ -1543,8 +1543,11 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	te.startDrummerNodes()
 	te.randomDropPacket(false)
 	plog.Infof("all nodes restarted")
-	waitTimeSec = loopIntervalSecond * 23
-	time.Sleep(time.Duration(waitTimeSec) * time.Second)
+	waitTimeSec = loopIntervalSecond
+	for i := 0; i < 23; i++ {
+		time.Sleep(time.Duration(waitTimeSec) * time.Second)
+		plog.Infof("waiting for nodes to stablize")
+	}
 	te.checkDrummerIsReady(t)
 	// stop the NodeHostInfo reporter on nodehost
 	// stop the drummer server
