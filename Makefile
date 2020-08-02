@@ -17,10 +17,10 @@ PKGNAME := github.com/lni/drummer/v3
 DRUMMER_MONKEY_TEST_BIN := drummer-monkey-testing
 DRUMMER_MONKEY_TEST_TAGS := dragonboat_monkeytest
 PORCUPINE_CHECKER_BIN := porcupine-checker-bin
-MONKEY_TEST_NAME := TestMonkeyPlay$
-ONDISK_MONKEY_TEST_NAME := TestMonkeyPlayOnDiskSM$
-TRAVIS_ONDISK_MONKEY_TEST_NAME := TestMonkeyPlayOnDiskSMTravis$
-TRAVIS_MONKEY_TEST_NAME := TestMonkeyPlayTravis$
+MONKEY_TEST_NAME := TestMonkeyPlay$$
+ONDISK_MONKEY_TEST_NAME := TestMonkeyPlayOnDiskSM$$
+TRAVIS_ONDISK_MONKEY_TEST_NAME := TestMonkeyPlayOnDiskSMTravis$$
+TRAVIS_MONKEY_TEST_NAME := TestMonkeyPlayTravis$$
 JEPSEN_FILE := drummer-lcm.jepsen
 EDN_FILE := drummer-lcm.edn
 
