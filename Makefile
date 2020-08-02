@@ -17,8 +17,10 @@ PKGNAME := github.com/lni/drummer/v3
 DRUMMER_MONKEY_TEST_BIN := drummer-monkey-testing
 DRUMMER_MONKEY_TEST_TAGS := dragonboat_monkeytest
 PORCUPINE_CHECKER_BIN := porcupine-checker-bin
-MONKEY_TEST_NAME := TestMonkeyPlay
-ONDISK_MONKEY_TEST_NAME := TestMonkeyPlayOnDiskSM 
+MONKEY_TEST_NAME := TestMonkeyPlay$
+ONDISK_MONKEY_TEST_NAME := TestMonkeyPlayOnDiskSM$
+TRAVIS_ONDISK_MONKEY_TEST_NAME := TestMonkeyPlayOnDiskSMTravis$
+TRAVIS_MONKEY_TEST_NAME := TestMonkeyPlayTravis$
 JEPSEN_FILE := drummer-lcm.jepsen
 EDN_FILE := drummer-lcm.edn
 
@@ -49,24 +51,24 @@ runtest:
 	./$(DRUMMER_MONKEY_TEST_BIN) $(TEST_OPTION) $(SILENT) -test.run $(TARGET)
 
 .PHONY: monkey-test
-monkey-test: TARGET := $(MONKEY_TEST_NAME)
+monkey-test: override TARGET := $(MONKEY_TEST_NAME)
 monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
 monkey-test: runtest
 
 .PHONY: ondisk-monkey-test
-ondisk-monkey-test: TARGET := $(ONDISK_MONKEY_TEST_NAME)
+ondisk-monkey-test: override TARGET := $(ONDISK_MONKEY_TEST_NAME)
 ondisk-monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
 ondisk-monkey-test: runtest
 
 .PHONY: monkey-test-travis
 monkey-test-travis: override SILENT := -silent
-monkey-test-travis: override TARGET := TestMonkeyPlayTravis
+monkey-test-travis: override TARGET := $(TRAVIS_MONKEY_TEST_NAME)
 monkey-test-travis: $(DRUMMER_MONKEY_TEST_BIN)
 monkey-test-travis: runtest
 
 .PHONY: ondisk-monkey-test-travis
 ondisk-monkey-test-travis: override SILENT := --silent
-ondisk-monkey-test-travis: override TARGET := TestMonkeyPlayOnDiskSMTravis
+ondisk-monkey-test-travis: override TARGET := $(TRAVIS_ONDISK_MONKEY_TEST_NAME)
 ondisk-monkey-test-travis: $(DRUMMER_MONKEY_TEST_BIN)
 ondisk-monkey-test-travis: runtest
 
