@@ -110,15 +110,15 @@ func isTravisCronJob() bool {
 }
 
 func TestMonkeyPlayTravis(t *testing.T) {
-	//if !isTravisCronJob() {
-	//	t.Skip("Not a travis cron job, test skipped")
-	//}
+	if !isTravisCronJob() {
+		t.Skip("Not a travis cron job, test skipped")
+	}
 	TestMonkeyPlay(t)
 }
 
 func TestMonkeyPlayOnDiskSMTravis(t *testing.T) {
-	//if !isTravisCronJob() {
-	//	t.Skip("Not a travis cron job, test skipped")
-	//}
+	if !isTravisCronJob() {
+		t.Skip("Not a travis cron job, test skipped")
+	}
 	TestMonkeyPlayOnDiskSM(t)
 }
