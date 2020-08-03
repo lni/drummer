@@ -164,7 +164,7 @@ func grpcError(err error) error {
 	} else if err == dragonboat.ErrPayloadTooBig || err == dragonboat.ErrTimeoutTooSmall {
 		code = codes.InvalidArgument
 	} else if err == dragonboat.ErrSystemBusy || err == dragonboat.ErrBadKey ||
-		err == dragonboat.ErrSystemStopped || err == dragonboat.ErrClusterClosed {
+		err == dragonboat.ErrClosed || err == dragonboat.ErrClusterClosed {
 		code = codes.Unavailable
 	} else if err == dragonboat.ErrClusterNotFound {
 		code = codes.NotFound
