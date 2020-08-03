@@ -32,6 +32,7 @@ var (
 	port   = flag.Int("port", 24000, "base port")
 	seed   = flag.Int64("seed", 0, "seed for the rng")
 	silent = flag.Bool("silent", false, "less verbose logging")
+	slowvm = flag.Bool("slowvm", false, "running on very slow vm")
 )
 
 type testOption struct {
@@ -42,6 +43,7 @@ type testOption struct {
 	workerCount         uint64
 	queueLength         uint64
 	silent              bool
+	slowvm              bool
 }
 
 func getTestOption() *testOption {
@@ -50,6 +52,7 @@ func getTestOption() *testOption {
 		seed:                *seed,
 		port:                uint64(*port),
 		silent:              *silent,
+		slowvm:              *slowvm,
 		maxProcs:            rand.Uint64()%8 + 3,   // [3, 10]
 		snapshotWorkerCount: rand.Uint64()%8 + 1,   // [1, 8]
 		workerCount:         rand.Uint64()%4 + 1,   // [1, 4]

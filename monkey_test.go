@@ -235,9 +235,11 @@ type testSetup struct {
 	nodehostAPIAddrs          []string
 	drummerDirs               []string
 	nodehostDirs              []string
+	slowvm                    bool
 }
 
-func newTestSetup(port uint64) *testSetup {
+func newTestSetup(to *testOption) *testSetup {
+	port := to.port
 	ts := &testSetup{
 		drummerAddrs:              make([]string, 0),
 		nodehostAddrs:             make([]string, 0),
@@ -263,6 +265,7 @@ func newTestSetup(port uint64) *testSetup {
 		maxWaitForStopSecond:      60,
 		maxWaitForSyncSecond:      120,
 		maxAllowedHeapSize:        1024 * 1024 * 1024 * 4,
+		slowvm:                    to.slowvm,
 	}
 	port = port + 1
 	for i := uint64(0); i < uint64(ts.numOfTestDrummerNodes); i++ {
@@ -1074,6 +1077,10 @@ func (te *testEnv) submitJobs(name string) bool {
 }
 
 func (te *testEnv) checkClustersAreAccessible(t *testing.T) {
+	if te.ts.slowvm {
+		plog.Infof("running on slow vm, availability check skipped")
+		return
+	}
 	synced := make(map[uint64]struct{})
 	timeout := defaultTestTimeout
 	count := te.ts.numOfClusters
@@ -1475,7 +1482,7 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("test pid %d", os.Getpid())
 	plog.Infof("snapshot disabled in monkey test %t, less snapshot %t",
 		snapshotDisabledInConfig(), lessSnapshotTest())
-	ts := newTestSetup(to.port)
+	ts := newTestSetup(to)
 	te := createTestNodes(ts)
 	te.startDrummerNodes()
 	te.startNodeHostNodes()
@@ -1584,8 +1591,9 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	te.checkLogDBSynced(t)
 	plog.Infof("going to check in mem log sizes")
 	te.checkRateLimiterState(t)
+	plog.Infof("total completed IO: %d", atomic.LoadUint64(&te.completedIO))
 	plog.Infof("going to check cluster accessibility")
 	te.checkClustersAreAccessible(t)
-	plog.Infof("total completed IO: %d", atomic.LoadUint64(&te.completedIO))
+	plog.Infof("cluster accessibility checked")
 	plog.Infof("all done, test is going to return.")
 }

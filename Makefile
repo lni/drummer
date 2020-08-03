@@ -48,7 +48,7 @@ test-tests:
 
 .PHONY: runtest
 runtest:
-	./$(DRUMMER_MONKEY_TEST_BIN) $(TEST_OPTION) $(SILENT) -test.run $(TARGET)
+	./$(DRUMMER_MONKEY_TEST_BIN) $(TEST_OPTION) $(SILENT) $(SLOWVM) -test.run $(TARGET)
 
 .PHONY: monkey-test
 monkey-test: override TARGET := $(MONKEY_TEST_NAME)
@@ -62,12 +62,14 @@ ondisk-monkey-test: runtest
 
 .PHONY: monkey-test-travis
 monkey-test-travis: override SILENT := -silent
+monkey-test-travis: override SLOWVM := -slowvm
 monkey-test-travis: override TARGET := $(TRAVIS_MONKEY_TEST_NAME)
 monkey-test-travis: $(DRUMMER_MONKEY_TEST_BIN)
 monkey-test-travis: runtest
 
 .PHONY: ondisk-monkey-test-travis
 ondisk-monkey-test-travis: override SILENT := --silent
+ondisk-monkey-test-travis: override SLOWVM := -slowvm
 ondisk-monkey-test-travis: override TARGET := $(TRAVIS_ONDISK_MONKEY_TEST_NAME)
 ondisk-monkey-test-travis: $(DRUMMER_MONKEY_TEST_BIN)
 ondisk-monkey-test-travis: runtest
@@ -82,6 +84,7 @@ race-ondisk-monkey-test: ondisk-monkey-test
 
 .PHONY: race-monkey-test-travis
 race-monkey-test-travis: override RACE := -race
+race-monkey-test-travis: override SLOWVM := -slowvm
 race-monkey-test-travis: monkey-test-travis
 
 .PHONY: clean
