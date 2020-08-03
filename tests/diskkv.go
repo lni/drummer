@@ -35,6 +35,7 @@ import (
 	"github.com/cockroachdb/pebble"
 	pvfs "github.com/cockroachdb/pebble/vfs"
 
+	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
 	sm "github.com/lni/dragonboat/v3/statemachine"
 	"github.com/lni/drummer/v3/kv"
@@ -99,7 +100,7 @@ func Mkdir(dir string, fs config.IFS) error {
 		return err
 	}
 	if !exist {
-		panic(fmt.Sprintf("%s doesn't exist when creating %s", parent, dir))
+		plog.Panicf("%s doesn't exist when creating %s", parent, dir)
 	}
 	if err := fs.MkdirAll(dir, 0755); err != nil {
 		return err
@@ -264,6 +265,9 @@ func (r *pebbledb) close() {
 }
 
 func createDB(dbdir string, fs config.IFS) (*pebbledb, error) {
+	if _, ok := fs.(*dragonboat.MemFS); ok {
+		plog.Infof("diskkv using memfs")
+	}
 	ro := &pebble.IterOptions{}
 	wo := &pebble.WriteOptions{Sync: false}
 	syncwo := &pebble.WriteOptions{Sync: true}
@@ -414,7 +418,6 @@ func cleanupNodeDataDir(dir string, fs config.IFS) error {
 		}
 		toDelete := fs.PathJoin(dir, fi.Name())
 		if toDelete != dbdir {
-			fmt.Printf("removing %s\n", toDelete)
 			if err := fs.RemoveAll(toDelete); err != nil {
 				return err
 			}
@@ -667,7 +670,7 @@ func (d *DiskKVTest) SaveSnapshot(ctx interface{},
 		panic("prepare snapshot called after abort")
 	}
 	delay := getLargeRandomDelay(d.clusterID)
-	fmt.Printf("random delay %d ms\n", delay)
+	plog.Infof("random delay %d ms", delay)
 	for delay > 0 {
 		delay -= 10
 		time.Sleep(10 * time.Millisecond)
@@ -703,7 +706,7 @@ func (d *DiskKVTest) RecoverFromSnapshot(r io.Reader,
 		panic("recover from snapshot called after Close()")
 	}
 	delay := getLargeRandomDelay(d.clusterID)
-	fmt.Printf("random delay %d ms\n", delay)
+	plog.Infof("random delay %d ms", delay)
 	for delay > 0 {
 		delay -= 10
 		time.Sleep(10 * time.Millisecond)

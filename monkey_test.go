@@ -635,6 +635,9 @@ func createTestNodes(ts *testSetup) *testEnv {
 	}
 	for i := uint64(0); i < uint64(len(ts.drummerAddrs)); i++ {
 		fs := dragonboat.GetTestFS()
+		if _, ok := fs.(*dragonboat.MemFS); ok {
+			plog.Infof("drummer %d using memfs", i)
+		}
 		te.drummers[i] = &testNode{
 			index:              i,
 			stopped:            true,
@@ -649,6 +652,9 @@ func createTestNodes(ts *testSetup) *testEnv {
 	}
 	for i := uint64(0); i < uint64(len(ts.nodehostAddrs)); i++ {
 		fs := dragonboat.GetTestFS()
+		if _, ok := fs.(*dragonboat.MemFS); ok {
+			plog.Infof("nodehost %d using memfs", i)
+		}
 		te.nodehosts[i] = &testNode{
 			index:              i,
 			stopped:            true,

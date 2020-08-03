@@ -15,7 +15,8 @@
 GO := go
 PKGNAME := github.com/lni/drummer/v3
 DRUMMER_MONKEY_TEST_BIN := drummer-monkey-testing
-DRUMMER_MONKEY_TEST_TAGS := dragonboat_monkeytest
+DRUMMER_MONKEY_TEST_TAG := dragonboat_monkeytest
+MEMFS_TAG := dragonboat_memfs_test
 PORCUPINE_CHECKER_BIN := porcupine-checker-bin
 MONKEY_TEST_NAME := TestMonkeyPlay$$
 ONDISK_MONKEY_TEST_NAME := TestMonkeyPlayOnDiskSM$$
@@ -26,8 +27,31 @@ EDN_FILE := drummer-lcm.edn
 
 TEST_OPTION := -test.v -test.timeout 3200s
 
+BUILD_TAGS := $(DRUMMER_MONKEY_TEST_TAG)
+ifneq ($(DRAGONBOAT_MEMFS_TEST),)
+$(info using memfs based pebble)
+BUILD_TAGS+=$(MEMFS_TAG)
+endif
+
+.PHONY: all
+all:
+	@echo usage:
+	@echo " make test"
+	@echo " make test-tests"
+	@echo " make monkey-test"
+	@echo " make ondisk-monkey-test"
+	@echo " make monkey-test-travis"
+	@echo " make ondisk-monkey-test-travis"
+	@echo " make race-monkey-test"
+	@echo " make race-ondisk-monkey-test"
+	@echo " make race-monkey-test-travis"
+	@echo " make clean"
+	@echo " "
+	@echo "set the DRAGONBOAT_MEMFS_TEST environment varible to use memfs, e.g."
+	@echo " DRAGONBOAT_MEMFS_TEST=1 make monkey-test"
+
 $(DRUMMER_MONKEY_TEST_BIN):
-	$(GO) test $(RACE) -tags="$(DRUMMER_MONKEY_TEST_TAGS)" -c -o $@ $(PKGNAME)
+	$(GO) test $(RACE) -tags="$(BUILD_TAGS)" -c -o $@ $(PKGNAME)
 
 $(PORCUPINE_CHECKER_BIN):
 	$(GO) build -o $@ $(VERBOSE) $(PKGNAME)/lcm/checker
