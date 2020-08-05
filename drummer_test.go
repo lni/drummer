@@ -77,13 +77,21 @@ func runDrummerMonkeyTest(t *testing.T, name string) {
 	dragonboat.SetIncomingReadIndexMaxLen(64)
 	dragonboat.ApplyMonkeySettings()
 	if to.silent {
-		plog.Infof("silent mode, most logging will be disabled")
+		plog.Infof("silent mode, verbosity level: ERROR")
 		logger.GetLogger("dragonboat").SetLevel(logger.ERROR)
 		logger.GetLogger("transport").SetLevel(logger.CRITICAL)
 		logger.GetLogger("raft").SetLevel(logger.ERROR)
 		logger.GetLogger("rsm").SetLevel(logger.ERROR)
 		logger.GetLogger("logdb").SetLevel(logger.ERROR)
 		logger.GetLogger("drummer/client").SetLevel(logger.ERROR)
+	} else {
+		plog.Infof("regular mode, verbosity level: DEBUG")
+		logger.GetLogger("dragonboat").SetLevel(logger.DEBUG)
+		logger.GetLogger("transport").SetLevel(logger.DEBUG)
+		logger.GetLogger("raft").SetLevel(logger.DEBUG)
+		logger.GetLogger("rsm").SetLevel(logger.DEBUG)
+		logger.GetLogger("logdb").SetLevel(logger.DEBUG)
+		logger.GetLogger("drummer/client").SetLevel(logger.DEBUG)
 	}
 	drummerMonkeyTesting(t, to, name)
 }
