@@ -57,7 +57,7 @@ deploy()
     testsed="sed -e s/SELECTEDTEST/TestMonkeyPlay/g"
   else
     smtype="on disk"
-    testsed="sed -e s/SELECTEDTEST/TestMonkeyPlayOnDiskSM/g"
+    testsed="sed -e s/SELECTEDTEST/TestOnDiskSMMonkeyPlay/g"
   fi
   if [[ -z "${DRAGONBOAT_MEMFS_TEST}" ]]; then
     echo "regular test mode, sm type: $smtype"

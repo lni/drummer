@@ -93,12 +93,12 @@ func TestMonkeyPlay(t *testing.T) {
 	runDrummerMonkeyTest(t, "kvtest")
 }
 
-func TestMonkeyPlayConcurrentSM(t *testing.T) {
+func TestConcurrentSMMonkeyPlay(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	runDrummerMonkeyTest(t, "concurrentkv")
 }
 
-func TestMonkeyPlayOnDiskSM(t *testing.T) {
+func TestOnDiskSMMonkeyPlay(t *testing.T) {
 	defer leaktest.AfterTest(t)()
 	runDrummerMonkeyTest(t, "diskkv")
 }
@@ -116,9 +116,9 @@ func TestMonkeyPlayTravis(t *testing.T) {
 	TestMonkeyPlay(t)
 }
 
-func TestMonkeyPlayOnDiskSMTravis(t *testing.T) {
+func TestOnDiskSMMonkeyPlayTravis(t *testing.T) {
 	if !isTravisCronJob() {
 		t.Skip("Not a travis cron job, test skipped")
 	}
-	TestMonkeyPlayOnDiskSM(t)
+	TestOnDiskSMMonkeyPlay(t)
 }
