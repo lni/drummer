@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Copyright 2017-2019 Lei Ni (nilei81@gmail.com)
+# Copyright 2017-2020 Lei Ni (nilei81@gmail.com)
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,15 +18,16 @@ set -e
 
 OS=`uname`
 if [ $OS = "Darwin" ]; then
-  # sudo diskutil erasevolume HFS+ "ramdisk" `hdiutil attach -nomount ram://4629672`
-  TARGETDIR="/Volumes/ramdisk"
+  # sudo diskutil erasevolume HFS+ "dragonboat-monkey-test" \
+  #  `hdiutil attach -nomount ram://4629672`
+  TARGETDIR="/Volumes/dragonboat-monkey-test"
 else
-  TARGETDIR="/media/drummermt-ramdisk-test"
+  TARGETDIR="/media/dragonboat-monkey-test"
 fi
 EXECNAME="drummer-monkey-testing"
-PKGNAME="github.com/lni/dragonboat"
-RUNTEST="run_drummermt_test.sh"
+RUNTEST="run_monkey_test.sh"
 PIDNAME="drummertest.pid"
+MONKEYTOOL="monkey_tools.sh"
 TARGETBIN=$TARGETDIR/bin
 
 if [ ! -d "$TARGETDIR" ]; then
@@ -34,40 +35,40 @@ if [ ! -d "$TARGETDIR" ]; then
 fi
 
 if [ "$#" -ne 2 ]; then
-  echo "usage: ./drummermt_rdt.sh MODE NUM_OF_JOBS" >&2
+  echo "usage: ./deploy.sh MODE NUM_OF_JOBS" >&2
   echo "MODE can be one of deploy, start or stop" >&2
   exit 1
 fi
 
 curdir=`pwd`
-NOJ=$2
+NUM_OF_JOBS=$2
 MODE=$1
 re='^[0-9]+$'
-if ! [[ $NOJ =~ $re ]] ; then
+if ! [[ $NUM_OF_JOBS =~ $re ]] ; then
   echo "error: NUM_OF_JOBS parameter is not a number" >&2; exit 1
 fi
 
-seq=`seq 1 $NOJ`
+seq=`seq 1 $NUM_OF_JOBS`
 
 deploy()
 {
   if [[ -z "${ONDISK_TEST}" ]]; then
     smtype="in memory"
-    testsed="sed -e s/SELECTEDTEST/TestClusterCanSurviveDrummerMonkeyPlay/g"
+    testsed="sed -e s/SELECTEDTEST/TestMonkeyPlay/g"
   else
     smtype="on disk"
-    testsed="sed -e s/SELECTEDTEST/TestOnDiskClusterCanSurviveDrummerMonkeyPlay/g"
+    testsed="sed -e s/SELECTEDTEST/TestMonkeyPlayOnDiskSM/g"
   fi
   if [[ -z "${DRAGONBOAT_MEMFS_TEST}" ]]; then
     echo "regular test mode, sm type: $smtype"
-    make -C .. drummer-monkey-test-bin
+    make -C .. drummer-monkey-testing
   else
     echo "memfs test mode, sm type: $smtype"
-    DRAGONBOAT_MEMFS_TEST=1 make -C .. drummer-monkey-test-bin
+    DRAGONBOAT_MEMFS_TEST=1 make -C .. drummer-monkey-testing
   fi
-  make -C .. porcupine-checker
+  make -C .. porcupine-checker-bin
   rm -rf $TARGETDIR/*
-  cp rdttools.sh $TARGETDIR
+  cp $MONKEYTOOL $TARGETDIR
   mkdir $TARGETBIN
   cp ../porcupine-checker-bin $TARGETBIN
   cp ../$EXECNAME $TARGETBIN
@@ -90,9 +91,7 @@ deploy()
     ln -s $TARGETDIR/bin/$EXECNAME $DIR/$EXECNAME
     base=$((base+incv))
     sedcmd="sed -e s/BASEPORT/${base}/g"
-    cat runscript_template.sh | ${testsed} > $DIR/runscrupt.tmp1
-    cat $DIR/runscrupt.tmp1 | ${sedcmd} > $DIR/$RUNTEST
-    rm $DIR/runscrupt.tmp1
+    cat runscript_template.sh | ${testsed} | ${sedcmd} > $DIR/$RUNTEST
     chmod +x $DIR/$RUNTEST
   done
   return

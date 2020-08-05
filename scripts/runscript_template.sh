@@ -17,6 +17,8 @@
 OS=`uname`
 TESTNAME="SELECTEDTEST"
 curdir=`pwd`
+output="drummer-mt-out.txt"
+jepsen="drummer-lcm.jepsen"
 [[ $curdir =~ test([0-9]+)$ ]] && testno=${BASH_REMATCH[1]}
 
 if [ $OS = "Linux" ]; then
@@ -44,24 +46,23 @@ do
   fn="drummer-mt-error-$i.txt"
   echo "numa settings $numacmd" > numa.txt
   echo "iteration $i" > progress.txt
-  settings="-test.timeout 2450s -test.v -test.run $TESTNAME"
-  GOTRACEBACK=crash DRUMMERMTPORT=BASEPORT $numacmd \
-    ./drummer-monkey-testing  $settings > drummer-mt-out.txt 2>&1
+  settings="-test.timeout 2450s -test.v -test.run $TESTNAME -port BASEPORT"
+  GOTRACEBACK=crash $numacmd ./drummer-monkey-testing $settings > $output 2>&1
   if [ $? -ne 0 ]; then
-    mv drummer-mt-out.txt $fn
+    mv $output $fn
     mv drummer_mt_pwd_safe_to_delete drummer_mt_pwd_safe_to_delete_err_$i
     cp external-*.data drummer_mt_pwd_safe_to_delete_err_$i/
   fi
   if [ -f drummer-lcm.jepsen ]; then
-    ./porcupine-checker-bin -path drummer-lcm.jepsen -timeout 30
+    ./porcupine-checker-bin -path $jepsen -timeout 30
     if [ $? -ne 0 ]; then
       echo "" > linearizability-checker-error-$i.txt
-      mv drummer-lcm.jepsen drummer-lcm-error-$i.jepsen
+      mv $jepsen drummer-lcm-error-$i.jepsen
     fi
   fi
   ednfn="../lcmlog/drummer-lcm-$i-$testno.edn"
   jepsenfn="../lcmlog/drummer-lcm-$i-$testno.jepsen" 
   cp drummer-lcm.edn $ednfn
-  cp drummer-lcm.jepsen $jepsenfn
-  rm -rf test_rocksdb_db_safe_to_delete external-*.data
+  cp $jepsen $jepsenfn
+  rm -rf drummer_mt_pwd_safe_to_delete external-*.data
 done
