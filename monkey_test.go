@@ -1607,10 +1607,10 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("going to check in mem log sizes")
 	te.checkRateLimiterState(t)
 	plog.Infof("total completed IO: %d", atomic.LoadUint64(&te.completedIO))
+	te.stopDrummerNodes()
+	te.startDrummerNodes()
 	plog.Infof("going to check cluster accessibility")
 	te.checkClustersAreAccessible(t)
 	plog.Infof("cluster accessibility checked")
 	plog.Infof("all done, test is going to return.")
-	te.stopDrummerNodes()
-	te.startDrummerNodes()
 }
