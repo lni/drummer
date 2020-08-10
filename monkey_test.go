@@ -575,6 +575,8 @@ func (n *testNode) startDrummerNode(ts *testSetup) {
 	}
 	rc.NodeID = uint64(n.index + 1)
 	rc.ClusterID = defaultClusterID
+	// never do log compaction on drummer nodes
+	rc.CompactionOverhead = math.MaxUint64
 	if err := nh.StartCluster(peers, false, NewDB, rc); err != nil {
 		panic(err)
 	}
@@ -741,14 +743,16 @@ func (te *testEnv) checkNodesSynced(t *testing.T, nodes []*testNode) {
 }
 
 func (te *testEnv) checkLogDBSynced(t *testing.T) {
-	if !snapshotDisabledInConfig() {
-		// log compaction enabled, we can't compare the full DB
-		return
+	te.logDBSynced(t, te.drummers)
+	if snapshotDisabledInConfig() {
+		te.logDBSynced(t, te.nodehosts)
 	}
+}
+
+func (te *testEnv) logDBSynced(t *testing.T, nodes []*testNode) {
 	hashMap := make(map[uint64]uint64)
 	notSynced := make(map[uint64]struct{})
-	for _, n := range te.nodehosts {
-		n.mustBeNodehost()
+	for _, n := range nodes {
 		nh := n.nh
 		for _, rn := range nh.Clusters() {
 			nodeID := rn.NodeID()
@@ -1008,7 +1012,9 @@ func (te *testEnv) monkeyPlay() {
 
 func (te *testEnv) stopDrummerActivity() {
 	for _, n := range te.nodehosts {
-		n.drummerClient.StopNodeHostInfoReporter()
+		if n.drummerClient != nil {
+			n.drummerClient.StopNodeHostInfoReporter()
+		}
 	}
 	for _, n := range te.drummers {
 		n.stopper.Stop()
@@ -1590,6 +1596,9 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("state machine check done")
 	te.waitForDrummers()
 	plog.Infof("drummer nodes stable check done")
+	te.stopDrummerActivity()
+	plog.Infof("drummer nodes stopped")
+	time.Sleep(10 * time.Second)
 	te.checkDrummersSynced(t)
 	plog.Infof("drummer sync check done")
 	te.checkDrummerSM(t)
@@ -1602,4 +1611,6 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	te.checkClustersAreAccessible(t)
 	plog.Infof("cluster accessibility checked")
 	plog.Infof("all done, test is going to return.")
+	te.stopDrummerNodes()
+	te.startDrummerNodes()
 }
