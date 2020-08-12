@@ -50,9 +50,11 @@ all:
 	@echo "set the DRAGONBOAT_MEMFS_TEST environment varible to use memfs, e.g."
 	@echo " DRAGONBOAT_MEMFS_TEST=1 make monkey-test"
 
+.PHONY: $(DRUMMER_MONKEY_TEST_BIN)
 $(DRUMMER_MONKEY_TEST_BIN):
 	$(GO) test $(RACE) -tags="$(BUILD_TAGS)" -c -o $@ $(PKGNAME)
 
+.PHONY: $(PORCUPINE_CHECKER_BIN)
 $(PORCUPINE_CHECKER_BIN):
 	$(GO) build -o $@ $(VERBOSE) $(PKGNAME)/lcm/checker
 
