@@ -741,14 +741,15 @@ func (te *testEnv) checkNodesSynced(t *testing.T, nodes []*testNode) {
 }
 
 func (te *testEnv) checkLogDBSynced(t *testing.T) {
-	if !snapshotDisabledInConfig() {
-		// log compaction enabled, we can't compare the full DB
-		return
+	if snapshotDisabledInConfig() {
+		te.logDBSynced(t, te.nodehosts)
 	}
+}
+
+func (te *testEnv) logDBSynced(t *testing.T, nodes []*testNode) {
 	hashMap := make(map[uint64]uint64)
 	notSynced := make(map[uint64]struct{})
-	for _, n := range te.nodehosts {
-		n.mustBeNodehost()
+	for _, n := range nodes {
 		nh := n.nh
 		for _, rn := range nh.Clusters() {
 			nodeID := rn.NodeID()
@@ -1008,7 +1009,9 @@ func (te *testEnv) monkeyPlay() {
 
 func (te *testEnv) stopDrummerActivity() {
 	for _, n := range te.nodehosts {
-		n.drummerClient.StopNodeHostInfoReporter()
+		if n.drummerClient != nil {
+			n.drummerClient.StopNodeHostInfoReporter()
+		}
 	}
 	for _, n := range te.drummers {
 		n.stopper.Stop()
@@ -1590,6 +1593,9 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("state machine check done")
 	te.waitForDrummers()
 	plog.Infof("drummer nodes stable check done")
+	te.stopDrummerActivity()
+	plog.Infof("drummer nodes stopped")
+	time.Sleep(10 * time.Second)
 	te.checkDrummersSynced(t)
 	plog.Infof("drummer sync check done")
 	te.checkDrummerSM(t)
@@ -1598,8 +1604,10 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("going to check in mem log sizes")
 	te.checkRateLimiterState(t)
 	plog.Infof("total completed IO: %d", atomic.LoadUint64(&te.completedIO))
+	te.stopDrummerNodes()
+	te.startDrummerNodes()
 	plog.Infof("going to check cluster accessibility")
-	te.checkClustersAreAccessible(t)
+	//te.checkClustersAreAccessible(t)
 	plog.Infof("cluster accessibility checked")
 	plog.Infof("all done, test is going to return.")
 }

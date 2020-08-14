@@ -138,6 +138,10 @@ github.com/lni/dragonboat/v3 v3.0.0-20200504165919-2ca6745a0584 h1:H5YRmYPaUTA/P
 github.com/lni/dragonboat/v3 v3.0.0-20200504165919-2ca6745a0584/go.mod h1:q262nDgYLEY5NT+QnqvuH4zw1ovyq8QxnvOA76f3zfw=
 github.com/lni/dragonboat/v3 v3.0.0-20200505071244-cb8987d82fe7 h1:Z2eG08XcKmvlm7mF3qcF/TRmCzKKXVp4rjQPVpj/6zk=
 github.com/lni/dragonboat/v3 v3.0.0-20200505071244-cb8987d82fe7/go.mod h1:q262nDgYLEY5NT+QnqvuH4zw1ovyq8QxnvOA76f3zfw=
+github.com/lni/dragonboat/v3 v3.0.0-20200806143417-7d97c629a371 h1:Cy6MOimHFMNIUGL07k52J8v2vglczbpf1cMAQlariuI=
+github.com/lni/dragonboat/v3 v3.0.0-20200806143417-7d97c629a371/go.mod h1:ZDGJkYSZIJ+6aSJ+IfnxhuZ8i58YqHqqZIZGuxVQpIo=
+github.com/lni/dragonboat/v3 v3.0.0-20200810092742-f20becb5dea5 h1:7rdV28xt/l52AmYHglzUINK3x0fcrEXJemymGFriCmU=
+github.com/lni/dragonboat/v3 v3.0.0-20200810092742-f20becb5dea5/go.mod h1:ZDGJkYSZIJ+6aSJ+IfnxhuZ8i58YqHqqZIZGuxVQpIo=
 github.com/lni/dragonboat/v3 v3.1.0 h1:Hx/i7unEbt0dD1HBINkIsp+3IuFmJ34Ih3VkTxWTMN4=
 github.com/lni/dragonboat/v3 v3.1.0/go.mod h1:EQ/59ROPqeDktEFaZcz0lXSSnM74Yj7r92X8oHsZKSQ=
 github.com/lni/dragonboat/v3 v3.1.1-0.20200211144852-eb6e96d4b8eb h1:8hk+ob85MXG9DACvStBq6vNVHMGn8bMfTHObKIewQcs=

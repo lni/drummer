@@ -90,8 +90,10 @@ func (dnh *NodeHostClient) Stop() {
 
 // StopNodeHostInfoReporter stop the info reporter part of the client.
 func (dnh *NodeHostClient) StopNodeHostInfoReporter() {
-	dnh.reporterStopper.Stop()
-	dnh.reporterStopper = nil
+	if dnh.reporterStopper != nil {
+		dnh.reporterStopper.Stop()
+		dnh.reporterStopper = nil
+	}
 }
 
 func (dnh *NodeHostClient) masterRequestWorker(ctx context.Context) {
