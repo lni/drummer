@@ -1122,12 +1122,12 @@ func (te *testEnv) getRequestAddress(ctx context.Context,
 		conn, err = p.GetInsecureConnection(cctx, addr)
 		cancel()
 		if err != nil {
-			plog.Warningf("failed to get drummer connection, %s, %v", addr, err)
+			plog.Infof("failed to get drummer connection, %s, %v", addr, err)
 			continue
 		}
 	}
 	if conn == nil {
-		plog.Warningf("failed to get any connection")
+		plog.Infof("failed to get any connection")
 		return "", "", false
 	}
 	client := pb.NewDrummerClient(conn.ClientConn())
@@ -1240,7 +1240,7 @@ func (te *testEnv) makeMonkeyRequests(ctx context.Context,
 	clusterID uint64, repeated bool) bool {
 	writeAddr, readAddr, ok := te.getRequestAddress(ctx, clusterID)
 	if !ok {
-		plog.Warningf("failed to get read write address")
+		plog.Infof("failed to get read write address")
 		return false
 	}
 	pool := client.NewConnectionPool()

@@ -50,7 +50,7 @@ func (c *Connection) ClientConn() *grpc.ClientConn {
 func (c *Connection) Close() {
 	atomic.StoreUint32(&c.closed, 1)
 	if err := c.connection.Close(); err != nil {
-		plog.Errorf("failed to close the connection")
+		plog.Infof("failed to close the connection")
 	}
 }
 

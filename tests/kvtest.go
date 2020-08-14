@@ -97,7 +97,6 @@ type KVTest struct {
 
 // NewKVTest creates and return a new KVTest object.
 func NewKVTest(clusterID uint64, nodeID uint64) sm.IStateMachine {
-	fmt.Println("kvtest with stoppable snapshot created")
 	s := &KVTest{
 		KVStore:   make(map[string]string),
 		ClusterID: clusterID,
@@ -106,7 +105,6 @@ func NewKVTest(clusterID uint64, nodeID uint64) sm.IStateMachine {
 	}
 	v := os.Getenv("EXTERNALFILETEST")
 	s.externalFileTest = len(v) > 0
-	fmt.Printf("junk data inserted, external file test %t\n", s.externalFileTest)
 	// write some junk data consistent across the cluster
 	for i := 0; i < len(s.Junk); i++ {
 		s.Junk[i] = 2
@@ -290,7 +288,6 @@ func (s *KVTest) RecoverFromSnapshot(r io.Reader,
 // Close closes the IStateMachine instance
 func (s *KVTest) Close() error {
 	s.closed = true
-	log.Printf("%d:%dKVStore has been closed", s.ClusterID, s.NodeID)
 	return nil
 }
 
