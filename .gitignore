@@ -5,3 +5,4 @@ drummer_mt_pwd_safe_to_delete
 drummermt_mem.pprof
 porcupine-checker-bin
 out.txt
+*.pprof

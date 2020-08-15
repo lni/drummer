@@ -670,7 +670,7 @@ func createTestNodes(ts *testSetup) *testEnv {
 	return te
 }
 
-func (te *testEnv) checkPartitionedNodeHost(t *testing.T) {
+func (te *testEnv) ensureNodeHostNotPartitioned(t *testing.T) {
 	for _, n := range te.nodehosts {
 		n.mustBeNodehost()
 		if n.nh.IsPartitioned() {
@@ -679,7 +679,7 @@ func (te *testEnv) checkPartitionedNodeHost(t *testing.T) {
 	}
 }
 
-func (te *testEnv) checkRateLimiterState(t *testing.T) {
+func (te *testEnv) ensureRateLimiterState(t *testing.T) {
 	if rateLimiterDisabledInConfig() {
 		return
 	}
@@ -698,55 +698,50 @@ func (te *testEnv) checkRateLimiterState(t *testing.T) {
 	}
 }
 
-func (te *testEnv) checkNodeHostsSynced(t *testing.T) {
-	te.checkNodesSynced(t, te.nodehosts)
+func (te *testEnv) checkNodeHostsSynced(t *testing.T, last bool) bool {
+	return te.checkNodesSynced(t, te.nodehosts, last)
 }
 
-func (te *testEnv) checkDrummersSynced(t *testing.T) {
-	te.checkNodesSynced(t, te.drummers)
+func (te *testEnv) checkDrummersSynced(t *testing.T, last bool) bool {
+	return te.checkNodesSynced(t, te.drummers, last)
 }
 
-func (te *testEnv) checkNodesSynced(t *testing.T, nodes []*testNode) {
-	count := uint64(0)
-	for {
-		appliedMap := make(map[uint64]uint64)
-		notSynced := make(map[uint64]struct{})
-		for _, n := range nodes {
-			nh := n.nh
-			for _, rn := range nh.Clusters() {
-				clusterID := rn.ClusterID()
-				lastApplied := rn.GetLastApplied()
-				existingLastApplied, ok := appliedMap[clusterID]
-				if !ok {
-					appliedMap[clusterID] = lastApplied
-				} else {
-					if existingLastApplied != lastApplied {
-						notSynced[clusterID] = struct{}{}
-					}
+func (te *testEnv) checkNodesSynced(t *testing.T, nodes []*testNode, last bool) bool {
+	appliedMap := make(map[uint64]uint64)
+	notSynced := make(map[uint64]struct{})
+	for _, n := range nodes {
+		nh := n.nh
+		for _, rn := range nh.Clusters() {
+			clusterID := rn.ClusterID()
+			lastApplied := rn.GetLastApplied()
+			existingLastApplied, ok := appliedMap[clusterID]
+			if !ok {
+				appliedMap[clusterID] = lastApplied
+			} else {
+				if existingLastApplied != lastApplied {
+					notSynced[clusterID] = struct{}{}
 				}
 			}
 		}
-		if len(notSynced) > 0 {
-			time.Sleep(100 * time.Millisecond)
-			count++
-		} else {
-			return
-		}
-		// fail the test and dump details to log
-		if count == 10*te.ts.maxWaitForSyncSecond {
+	}
+	if len(notSynced) > 0 {
+		if last {
 			logCluster(nodes, notSynced)
-			t.Fatalf("%d failed to sync last applied", len(notSynced))
+			t.Fatalf("failed to sync all nodes")
 		}
+		return false
 	}
+	return true
 }
 
-func (te *testEnv) checkLogDBSynced(t *testing.T) {
+func (te *testEnv) checkLogDBSynced(t *testing.T, last bool) bool {
 	if snapshotDisabledInConfig() {
-		te.logDBSynced(t, te.nodehosts)
+		return te.logDBSynced(t, te.nodehosts, last)
 	}
+	return true
 }
 
-func (te *testEnv) logDBSynced(t *testing.T, nodes []*testNode) {
+func (te *testEnv) logDBSynced(t *testing.T, nodes []*testNode, last bool) bool {
 	hashMap := make(map[uint64]uint64)
 	notSynced := make(map[uint64]struct{})
 	for _, n := range nodes {
@@ -759,7 +754,7 @@ func (te *testEnv) logDBSynced(t *testing.T, nodes []*testNode) {
 			entries, _, err := logdb.IterateEntries(nil,
 				0, clusterID, nodeID, 1, lastApplied+1, math.MaxUint64)
 			if err != nil {
-				t.Errorf("failed to get entries %v", err)
+				t.Fatalf("failed to get entries %v", err)
 			}
 			hash := getEntryListHash(entries)
 			plog.Infof("%s logdb entry hash %d, last applied %d, ent sz %d",
@@ -778,20 +773,24 @@ func (te *testEnv) logDBSynced(t *testing.T, nodes []*testNode) {
 	}
 	if len(notSynced) > 0 {
 		logCluster(te.nodehosts, notSynced)
-		t.Fatalf("%d clusters failed to have logDB synced, %v",
-			len(notSynced), notSynced)
+		if last {
+			t.Fatalf("%d clusters failed to have logDB synced, %v",
+				len(notSynced), notSynced)
+		}
+		return false
 	}
+	return true
 }
 
-func (te *testEnv) checkNodeHostSM(t *testing.T) {
-	te.checkStateMachine(t, te.nodehosts)
+func (te *testEnv) checkNodeHostSM(t *testing.T, last bool) bool {
+	return te.checkStateMachine(t, te.nodehosts, last)
 }
 
-func (te *testEnv) checkDrummerSM(t *testing.T) {
-	te.checkStateMachine(t, te.drummers)
+func (te *testEnv) checkDrummerSM(t *testing.T, last bool) bool {
+	return te.checkStateMachine(t, te.drummers, last)
 }
 
-func (te *testEnv) checkStateMachine(t *testing.T, nodes []*testNode) {
+func (te *testEnv) checkStateMachine(t *testing.T, nodes []*testNode, last bool) bool {
 	hashMap := make(map[uint64]uint64)
 	sessionHashMap := make(map[uint64]uint64)
 	membershipMap := make(map[uint64]uint64)
@@ -810,8 +809,10 @@ func (te *testEnv) checkStateMachine(t *testing.T, nodes []*testNode) {
 			} else {
 				if existingHash != hash {
 					inconsistent[clusterID] = struct{}{}
-					t.Errorf("hash mismatch, cluster id %d, existing %d, new %d",
-						clusterID, existingHash, hash)
+					if last {
+						t.Errorf("hash mismatch, cluster id %d, existing %d, new %d",
+							clusterID, existingHash, hash)
+					}
 				}
 			}
 			// check session hash
@@ -821,8 +822,10 @@ func (te *testEnv) checkStateMachine(t *testing.T, nodes []*testNode) {
 			} else {
 				if existingHash != sessionHash {
 					inconsistent[clusterID] = struct{}{}
-					t.Errorf("session hash mismatch, cluster id %d, existing %d, new %d",
-						clusterID, existingHash, sessionHash)
+					if last {
+						t.Errorf("session hash mismatch, cluster id %d, existing %d, new %d",
+							clusterID, existingHash, sessionHash)
+					}
 				}
 			}
 			// check membership
@@ -832,18 +835,19 @@ func (te *testEnv) checkStateMachine(t *testing.T, nodes []*testNode) {
 			} else {
 				if existingHash != membershipHash {
 					inconsistent[clusterID] = struct{}{}
-					t.Errorf("membership hash mismatch, cluster id %d, %d vs %d",
-						clusterID, existingHash, membershipHash)
+					if last {
+						t.Errorf("membership hash mismatch, cluster id %d, %d vs %d",
+							clusterID, existingHash, membershipHash)
+					}
 				}
 			}
 		}
 	}
-	// dump details to log
-	if len(inconsistent) > 0 {
+	if len(inconsistent) > 0 && last {
 		logCluster(nodes, inconsistent)
+		t.Fatalf("inconsistent sm state found")
 	}
-	plog.Infof("hash map size %d, session hash map size %d",
-		len(hashMap), len(sessionHashMap))
+	return len(inconsistent) == 0
 }
 
 func (te *testEnv) startNodeHostNodes() {
@@ -1391,7 +1395,7 @@ func (te *testEnv) randomDropPacket(enabled bool) {
 	}
 }
 
-func (te *testEnv) checkDrummerIsReady(t *testing.T) {
+func (te *testEnv) checkDrummerIsReady(t *testing.T, last bool) bool {
 	leaderChecked := false
 	for _, n := range te.drummers {
 		if !n.isRunning() {
@@ -1403,16 +1407,23 @@ func (te *testEnv) checkDrummerIsReady(t *testing.T) {
 		leaderChecked = true
 		mc, err := n.getClusters()
 		if err != nil {
-			t.Fatalf("failed to get multiCluster from drummer")
+			if last {
+				t.Fatalf("failed to get multiCluster %v", err)
+			}
+			return false
 		}
 		plog.Infof("num of clusters known to drummer %d", mc.size())
 		if uint64(mc.size()) != te.ts.numOfClusters {
-			t.Fatalf("cluster count %d, want %d", mc.size(), te.ts.numOfClusters)
+			if last {
+				t.Fatalf("cluster count %d, want %d", mc.size(), te.ts.numOfClusters)
+			}
+			return false
 		}
 	}
-	if !leaderChecked {
+	if last && !leaderChecked {
 		t.Fatalf("drummer leader is not ready")
 	}
+	return leaderChecked
 }
 
 func (te *testEnv) checkHeapSize(t *testing.T) {
@@ -1447,7 +1458,7 @@ func (te *testEnv) monkeyTest(t *testing.T) {
 	}
 }
 
-func (te *testEnv) checkClusterState(t *testing.T) {
+func (te *testEnv) checkClusterState(t *testing.T, last bool) bool {
 	node := te.drummers[rand.Uint64()%uint64(len(te.drummers))]
 	mc, tick, err := node.getClustersAndTick()
 	if err != nil {
@@ -1458,23 +1469,41 @@ func (te *testEnv) checkClusterState(t *testing.T) {
 	}
 	toFix := make(map[uint64]struct{})
 	rc := mc.getClusterForRepair(tick)
-	if len(rc) != 0 {
-		for _, cr := range rc {
-			toFix[cr.clusterID] = struct{}{}
-		}
-		t.Errorf("to be repaired cluster %d, want 0", len(rc))
-		logClusterToRepair(rc, tick)
+	for _, cr := range rc {
+		toFix[cr.clusterID] = struct{}{}
 	}
 	uc := mc.getUnavailableClusters(tick)
-	if len(uc) != 0 {
-		for _, cr := range uc {
-			toFix[cr.ClusterID] = struct{}{}
-		}
-		t.Errorf("unavailable cluster %d, want 0", len(uc))
-		logUnavailableCluster(uc, tick)
+	for _, cr := range uc {
+		toFix[cr.ClusterID] = struct{}{}
 	}
-	if len(toFix) > 0 {
-		logCluster(te.nodehosts, toFix)
+	if last {
+		if len(rc) > 0 {
+			t.Errorf("to be repaired cluster %d, want 0", len(rc))
+			logClusterToRepair(rc, tick)
+		}
+		if len(uc) > 0 {
+			t.Errorf("unavailable cluster %d, want 0", len(uc))
+			logUnavailableCluster(uc, tick)
+		}
+		if len(toFix) > 0 {
+			t.Errorf("to fix cluster %d, want 0", len(toFix))
+			logCluster(te.nodehosts, toFix)
+		}
+	}
+	return len(rc) == 0 && len(uc) == 0 && len(toFix) == 0
+}
+
+type drummerCheck func(*testing.T, bool) bool
+
+var checkWaitInterval = 60 * time.Second
+
+func check(t *testing.T, dc drummerCheck, iteration uint64) {
+	for i := uint64(0); i < iteration; i++ {
+		last := i == (iteration - 1)
+		if dc(t, last) {
+			return
+		}
+		time.Sleep(checkWaitInterval)
 	}
 }
 
@@ -1529,7 +1558,7 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	waitTimeSec := (loopIntervalFactor + 7) * reportInterval
 	time.Sleep(time.Duration(waitTimeSec) * time.Second)
 	plog.Infof("going to check whether all clusters are launched")
-	te.checkDrummerIsReady(t)
+	check(t, te.checkDrummerIsReady, 10)
 	plog.Infof("launched clusters checked")
 	// randomly drop some packet
 	te.randomDropPacket(true)
@@ -1560,19 +1589,18 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	te.randomDropPacket(false)
 	plog.Infof("all nodes restarted")
 	waitTimeSec = loopIntervalSecond
-	for i := 0; i < 23; i++ {
+	for i := 0; i < 8; i++ {
 		time.Sleep(time.Duration(waitTimeSec) * time.Second)
 		plog.Infof("waiting for nodes to stablize")
 	}
-	te.checkDrummerIsReady(t)
+	check(t, te.checkDrummerIsReady, 10)
 	// stop the NodeHostInfo reporter on nodehost
 	// stop the drummer server
 	plog.Infof("going to stop drummer activities")
 	te.stopDrummerActivity()
 	plog.Infof("going to check drummer cluster info")
-	time.Sleep(50 * time.Second)
 	// make sure the cluster is stable with 3 raft nodes
-	te.checkClusterState(t)
+	check(t, te.checkClusterState, 10)
 	// dump the linearizability checker history data to disk
 	checker.Stop()
 	checker.SaveAsJepsenLog(lcmlog)
@@ -1582,27 +1610,26 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("going to restart drummer servers")
 	te.stopDrummerNodes()
 	te.startDrummerNodes()
-	time.Sleep(30 * time.Second)
-	te.checkPartitionedNodeHost(t)
+	time.Sleep(10 * time.Second)
+	te.ensureNodeHostNotPartitioned(t)
 	plog.Infof("going to check nodehost cluster state")
 	te.waitForNodeHosts()
 	plog.Infof("clusters stable check done")
-	te.checkNodeHostsSynced(t)
+	check(t, te.checkNodeHostsSynced, 10)
 	plog.Infof("sync check done")
-	te.checkNodeHostSM(t)
+	check(t, te.checkNodeHostSM, 10)
 	plog.Infof("state machine check done")
 	te.waitForDrummers()
 	plog.Infof("drummer nodes stable check done")
 	te.stopDrummerActivity()
 	plog.Infof("drummer nodes stopped")
-	time.Sleep(10 * time.Second)
-	te.checkDrummersSynced(t)
+	check(t, te.checkDrummersSynced, 10)
 	plog.Infof("drummer sync check done")
-	te.checkDrummerSM(t)
+	check(t, te.checkDrummerSM, 10)
 	plog.Infof("check logdb entries")
-	te.checkLogDBSynced(t)
+	check(t, te.checkLogDBSynced, 10)
 	plog.Infof("going to check in mem log sizes")
-	te.checkRateLimiterState(t)
+	te.ensureRateLimiterState(t)
 	plog.Infof("total completed IO: %d", atomic.LoadUint64(&te.completedIO))
 	te.stopDrummerNodes()
 	te.startDrummerNodes()
