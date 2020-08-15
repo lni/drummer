@@ -1466,10 +1466,16 @@ func (te *testEnv) checkClusterState(t *testing.T, last bool) bool {
 	node := te.drummers[rand.Uint64()%uint64(len(te.drummers))]
 	mc, tick, err := node.getClustersAndTick()
 	if err != nil {
-		t.Fatalf("failed to get multiCluster, %v", err)
+		if last {
+			t.Fatalf("failed to get multiCluster, %v", err)
+		}
+		return false
 	}
 	if uint64(mc.size()) != te.ts.numOfClusters {
-		t.Fatalf("cluster count %d, want %d", mc.size(), te.ts.numOfClusters)
+		if last {
+			t.Fatalf("cluster count %d, want %d", mc.size(), te.ts.numOfClusters)
+		}
+		return false
 	}
 	toFix := make(map[uint64]struct{})
 	rc := mc.getClusterForRepair(tick)
@@ -1505,7 +1511,9 @@ func check(t *testing.T, dc drummerCheck, iteration uint64) {
 		if dc(t, last) {
 			return
 		}
-		time.Sleep(time.Duration(loopIntervalSecond) * time.Second)
+		if !last {
+			time.Sleep(time.Duration(loopIntervalSecond) * time.Second)
+		}
 	}
 }
 
