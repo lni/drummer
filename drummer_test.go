@@ -71,7 +71,6 @@ func runDrummerMonkeyTest(t *testing.T, name string) {
 	dragonboat.SetSnapshotWorkerCount(to.snapshotWorkerCount)
 	dragonboat.SetApplyWorkerCount(to.workerCount)
 	dragonboat.SetReceiveQueueLen(to.queueLength)
-	dragonboat.SetPendingProposalShards(2)
 	dragonboat.SetTaskBatchSize(8)
 	dragonboat.SetIncomingProposalsMaxLen(64)
 	dragonboat.SetIncomingReadIndexMaxLen(64)
