@@ -1490,12 +1490,10 @@ func (te *testEnv) checkClusterState(t *testing.T, last bool) bool {
 			logCluster(te.nodehosts, toFix)
 		}
 	}
-	return len(rc) == 0 && len(uc) == 0 && len(toFix) == 0
+	return len(rc) == 0 && len(uc) == 0
 }
 
 type drummerCheck func(*testing.T, bool) bool
-
-var checkWaitInterval = 60 * time.Second
 
 func check(t *testing.T, dc drummerCheck, iteration uint64) {
 	for i := uint64(0); i < iteration; i++ {
@@ -1503,7 +1501,7 @@ func check(t *testing.T, dc drummerCheck, iteration uint64) {
 		if dc(t, last) {
 			return
 		}
-		time.Sleep(checkWaitInterval)
+		time.Sleep(time.Duration(loopIntervalSecond) * time.Second)
 	}
 }
 
@@ -1588,51 +1586,36 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	te.startDrummerNodes()
 	te.randomDropPacket(false)
 	plog.Infof("all nodes restarted")
-	waitTimeSec = loopIntervalSecond
-	for i := 0; i < 8; i++ {
-		time.Sleep(time.Duration(waitTimeSec) * time.Second)
-		plog.Infof("waiting for nodes to stablize")
-	}
-	check(t, te.checkDrummerIsReady, 10)
+	check(t, te.checkDrummerIsReady, 30)
 	// stop the NodeHostInfo reporter on nodehost
 	// stop the drummer server
-	plog.Infof("going to stop drummer activities")
-	te.stopDrummerActivity()
 	plog.Infof("going to check drummer cluster info")
 	// make sure the cluster is stable with 3 raft nodes
-	check(t, te.checkClusterState, 10)
+	check(t, te.checkClusterState, 50)
 	// dump the linearizability checker history data to disk
 	checker.Stop()
 	checker.SaveAsJepsenLog(lcmlog)
 	checker.SaveAsEDNLog(ednlog)
 	plog.Infof("dumping memory profile to disk")
 	saveHeapProfile("drummer_mem.pprof")
-	plog.Infof("going to restart drummer servers")
-	te.stopDrummerNodes()
-	te.startDrummerNodes()
-	time.Sleep(10 * time.Second)
 	te.ensureNodeHostNotPartitioned(t)
 	plog.Infof("going to check nodehost cluster state")
 	te.waitForNodeHosts()
 	plog.Infof("clusters stable check done")
-	check(t, te.checkNodeHostsSynced, 10)
+	check(t, te.checkNodeHostsSynced, 30)
 	plog.Infof("sync check done")
-	check(t, te.checkNodeHostSM, 10)
+	check(t, te.checkNodeHostSM, 30)
 	plog.Infof("state machine check done")
 	te.waitForDrummers()
 	plog.Infof("drummer nodes stable check done")
-	te.stopDrummerActivity()
-	plog.Infof("drummer nodes stopped")
-	check(t, te.checkDrummersSynced, 10)
+	check(t, te.checkDrummersSynced, 30)
 	plog.Infof("drummer sync check done")
-	check(t, te.checkDrummerSM, 10)
+	check(t, te.checkDrummerSM, 30)
 	plog.Infof("check logdb entries")
-	check(t, te.checkLogDBSynced, 10)
+	check(t, te.checkLogDBSynced, 30)
 	plog.Infof("going to check in mem log sizes")
 	te.ensureRateLimiterState(t)
 	plog.Infof("total completed IO: %d", atomic.LoadUint64(&te.completedIO))
-	te.stopDrummerNodes()
-	te.startDrummerNodes()
 	plog.Infof("going to check cluster accessibility")
 	//te.checkClustersAreAccessible(t)
 	plog.Infof("cluster accessibility checked")
