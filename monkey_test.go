@@ -679,9 +679,9 @@ func (te *testEnv) ensureNodeHostNotPartitioned(t *testing.T) {
 	}
 }
 
-func (te *testEnv) ensureRateLimiterState(t *testing.T) {
+func (te *testEnv) checkRateLimiterState(t *testing.T, last bool) bool {
 	if rateLimiterDisabledInConfig() {
-		return
+		return true
 	}
 	for _, n := range te.nodehosts {
 		n.mustBeNodehost()
@@ -691,11 +691,15 @@ func (te *testEnv) ensureRateLimiterState(t *testing.T) {
 			clusterID := rn.ClusterID()
 			nodeID := rn.NodeID()
 			if rl.Get() != rn.GetInMemLogSize() {
-				t.Fatalf("%s, rl mem log size %d, in mem log size %d",
-					dn(clusterID, nodeID), rl.Get(), rn.GetInMemLogSize())
+				if last {
+					t.Fatalf("%s, rl mem log size %d, in mem log size %d",
+						dn(clusterID, nodeID), rl.Get(), rn.GetInMemLogSize())
+				}
+				return false
 			}
 		}
 	}
+	return true
 }
 
 func (te *testEnv) checkNodeHostsSynced(t *testing.T, last bool) bool {
@@ -1614,7 +1618,7 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("check logdb entries")
 	check(t, te.checkLogDBSynced, 30)
 	plog.Infof("going to check in mem log sizes")
-	te.ensureRateLimiterState(t)
+	check(t, te.checkRateLimiterState, 30)
 	plog.Infof("total completed IO: %d", atomic.LoadUint64(&te.completedIO))
 	plog.Infof("going to check cluster accessibility")
 	//te.checkClustersAreAccessible(t)
