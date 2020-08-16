@@ -46,7 +46,7 @@ do
   fn="drummer-mt-error-$i.txt"
   echo "numa settings $numacmd" > numa.txt
   echo "iteration $i" > progress.txt
-  settings="-test.timeout 2450s -test.v -test.run $TESTNAME -port BASEPORT"
+  settings="-test.timeout 3600s -test.v -test.run $TESTNAME -port BASEPORT"
   GOTRACEBACK=crash $numacmd ./drummer-monkey-testing $settings > $output 2>&1
   if [ $? -ne 0 ]; then
     mv $output $fn

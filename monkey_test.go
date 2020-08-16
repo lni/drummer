@@ -1598,12 +1598,12 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	te.startDrummerNodes()
 	te.randomDropPacket(false)
 	plog.Infof("all nodes restarted")
-	check(t, te.checkDrummerIsReady, 30)
+	check(t, te.checkDrummerIsReady, 60)
 	// stop the NodeHostInfo reporter on nodehost
 	// stop the drummer server
 	plog.Infof("going to check drummer cluster info")
 	// make sure the cluster is stable with 3 raft nodes
-	check(t, te.checkClusterState, 50)
+	check(t, te.checkClusterState, 60)
 	// dump the linearizability checker history data to disk
 	checker.Stop()
 	checker.SaveAsJepsenLog(lcmlog)
@@ -1614,9 +1614,9 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("going to check nodehost cluster state")
 	te.waitForNodeHosts()
 	plog.Infof("clusters stable check done")
-	check(t, te.checkNodeHostsSynced, 30)
+	check(t, te.checkNodeHostsSynced, 60)
 	plog.Infof("sync check done")
-	check(t, te.checkNodeHostSM, 30)
+	check(t, te.checkNodeHostSM, 60)
 	plog.Infof("state machine check done")
 	te.waitForDrummers()
 	plog.Infof("drummer nodes stable check done")
