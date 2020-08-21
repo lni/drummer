@@ -259,7 +259,7 @@ func newTestSetup(to *testOption) *testSetup {
 		partitionCycleInterval:    60,
 		partitionCycleMinInterval: 30,
 		waitForStableSecond:       25,
-		testIdleTime:              100,
+		testIdleTime:              30,
 		nodeUpTimeLowSecond:       150000,
 		nodeUpTimeHighSecond:      240000,
 		maxWaitForStopSecond:      60,
@@ -886,6 +886,36 @@ func (te *testEnv) stopNodes(nodes []*testNode) {
 	}
 }
 
+func (te *testEnv) checkClustersLaunched(t *testing.T, last bool) bool {
+	clusters := make(map[uint64]uint64)
+	clustersReady := func(cs map[uint64]uint64) bool {
+		if uint64(len(cs)) != te.ts.numOfClusters {
+			return false
+		}
+		for _, count := range cs {
+			if count != 3 {
+				return false
+			}
+		}
+		return true
+	}
+	for _, tn := range te.nodehosts {
+		nh := tn.nh
+		for _, node := range nh.Clusters() {
+			if count, ok := clusters[node.ClusterID()]; ok {
+				clusters[node.ClusterID()] = count + 1
+			} else {
+				clusters[node.ClusterID()] = 1
+			}
+		}
+	}
+	ready := clustersReady(clusters)
+	if last && !ready {
+		t.Fatalf("not all clusters are launched")
+	}
+	return ready
+}
+
 func (te *testEnv) waitForNodeHosts() {
 	waitForStableNodes(te.nodehosts, te.ts.waitForStableSecond)
 }
@@ -1089,6 +1119,7 @@ func (te *testEnv) submitJobs(name string) bool {
 		if err := submitClusters(te.ts.numOfClusters, name, dc); err == nil {
 			return true
 		}
+		time.Sleep(time.Duration(NodeHostInfoReportSecond) * time.Second)
 	}
 	return false
 }
@@ -1116,7 +1147,6 @@ func (te *testEnv) checkClustersAreAccessible(t *testing.T) {
 		if uint64(len(synced)) == count {
 			return
 		}
-		time.Sleep(time.Second)
 	}
 	t.Fatalf("%d clusters are not accessible", count-uint64(len(synced)))
 }
@@ -1399,7 +1429,16 @@ func (te *testEnv) randomDropPacket(enabled bool) {
 	}
 }
 
+func (te *testEnv) checkDrummerLeaderReady(t *testing.T, last bool) bool {
+	return te.isDrummerReady(t, true, last)
+}
+
 func (te *testEnv) checkDrummerIsReady(t *testing.T, last bool) bool {
+	return te.isDrummerReady(t, false, last)
+}
+
+func (te *testEnv) isDrummerReady(t *testing.T,
+	checkLeaderOnly bool, last bool) bool {
 	leaderChecked := false
 	for _, n := range te.drummers {
 		if !n.isRunning() {
@@ -1409,19 +1448,21 @@ func (te *testEnv) checkDrummerIsReady(t *testing.T, last bool) bool {
 			continue
 		}
 		leaderChecked = true
-		mc, err := n.getClusters()
-		if err != nil {
-			if last {
-				t.Fatalf("failed to get multiCluster %v", err)
+		if !checkLeaderOnly {
+			mc, err := n.getClusters()
+			if err != nil {
+				if last {
+					t.Fatalf("failed to get multiCluster %v", err)
+				}
+				return false
 			}
-			return false
-		}
-		plog.Infof("num of clusters known to drummer %d", mc.size())
-		if uint64(mc.size()) != te.ts.numOfClusters {
-			if last {
-				t.Fatalf("cluster count %d, want %d", mc.size(), te.ts.numOfClusters)
+			plog.Infof("num of clusters known to drummer %d", mc.size())
+			if uint64(mc.size()) != te.ts.numOfClusters {
+				if last {
+					t.Fatalf("cluster count %d, want %d", mc.size(), te.ts.numOfClusters)
+				}
+				return false
 			}
-			return false
 		}
 	}
 	if last && !leaderChecked {
@@ -1558,18 +1599,16 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 		te.nodehosts[1].setupPartitionTests(partitionTestDuration)
 	}
 	// start the cluster
-	reportInterval := NodeHostInfoReportSecond
-	time.Sleep(time.Duration(3*reportInterval) * time.Second)
+	check(t, te.checkDrummerLeaderReady, 10)
 	plog.Infof("going to submit jobs")
 	if !te.submitJobs(name) {
 		t.Fatalf("failed to submit the test job")
 	}
 	plog.Infof("jobs submitted, waiting for clusters to be launched")
-	waitTimeSec := (loopIntervalFactor + 7) * reportInterval
-	time.Sleep(time.Duration(waitTimeSec) * time.Second)
-	plog.Infof("going to check whether all clusters are launched")
+	check(t, te.checkClustersLaunched, 30)
+	plog.Infof("all clusters launched, wait for drummer to be ready")
 	check(t, te.checkDrummerIsReady, 10)
-	plog.Infof("launched clusters checked")
+	plog.Infof("drummer is ready")
 	// randomly drop some packet
 	te.randomDropPacket(true)
 	// start a list of client workers that will make random write/read requests
