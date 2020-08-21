@@ -1322,7 +1322,7 @@ func (te *testEnv) stopWorkers() {
 	te.stopper.Stop()
 }
 
-func (te *testEnv) checkProposalResponse() {
+func (te *testEnv) checkProposalResponse(workerID uint64) {
 	tn := te.nodehosts[rand.Uint64()%uint64(len(te.nodehosts))]
 	if !tn.isRunning() {
 		return
@@ -1338,26 +1338,38 @@ func (te *testEnv) checkProposalResponse() {
 	if err != nil {
 		panic(err)
 	}
-	plog.Infof("making a test proposal on %s", nh.RaftAddress())
+	plog.Infof("worker %d making a test proposal on %s, cluster %d",
+		workerID, nh.RaftAddress(), clusterID)
 	rs, err := nh.Propose(session, data, 30*time.Second)
 	if err != nil {
 		plog.Errorf("propose failed %v", err)
 		return
 	}
-	timer := time.NewTimer(60 * time.Second)
-	defer timer.Stop()
-	select {
-	case <-te.stopper.ShouldStop():
-		return
-	case <-timer.C:
-		panic("no response for the proposal")
-	case <-rs.AppliedC():
+	wait := 0
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-te.stopper.ShouldStop():
+			return
+		case <-ticker.C:
+			wait++
+			if wait%10 == 0 {
+				plog.Infof("worker %d waited %d seconds", workerID, wait)
+			}
+			if wait == 100 {
+				plog.Panicf("worker %d failed to get response", workerID)
+			}
+		case <-rs.AppliedC():
+			return
+		}
 	}
 }
 
 func (te *testEnv) startResponseChecker() {
 	for i := uint64(0); i < te.ts.testClientWorkerCount; i++ {
 		te.stopper.RunWorker(func() {
+			workerID := i
 			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
 			for {
@@ -1365,7 +1377,7 @@ func (te *testEnv) startResponseChecker() {
 				case <-te.stopper.ShouldStop():
 					return
 				case <-ticker.C:
-					te.checkProposalResponse()
+					te.checkProposalResponse(workerID)
 				}
 			}
 		})
