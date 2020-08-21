@@ -1368,8 +1368,8 @@ func (te *testEnv) checkProposalResponse(workerID uint64) {
 
 func (te *testEnv) startResponseChecker() {
 	for i := uint64(0); i < te.ts.testClientWorkerCount; i++ {
+		workerID := i
 		te.stopper.RunWorker(func() {
-			workerID := i
 			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
 			for {
