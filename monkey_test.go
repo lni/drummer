@@ -1323,6 +1323,56 @@ func (te *testEnv) stopWorkers() {
 	te.stopper.Stop()
 }
 
+func (te *testEnv) checkProposalResponse() {
+	tn := te.nodehosts[rand.Uint64()%uint64(len(te.nodehosts))]
+	if !tn.isRunning() {
+		return
+	}
+	nh := tn.nh
+	clusterID := rand.Uint64()%te.ts.numOfClusters + 1
+	session := nh.GetNoOPSession(clusterID)
+	kv := &kv.KV{
+		Key: fmt.Sprintf("proposal-response-check-key-%d", rand.Uint64()),
+		Val: fmt.Sprintf("proposal-response-check-val-%d", rand.Uint64()),
+	}
+	data, err := kv.MarshalBinary()
+	if err != nil {
+		panic(err)
+	}
+	plog.Infof("making a test proposal on %s", nh.RaftAddress())
+	rs, err := nh.Propose(session, data, 30*time.Second)
+	if err != nil {
+		plog.Errorf("propose failed %v", err)
+		return
+	}
+	timer := time.NewTimer(60 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-te.stopper.ShouldStop():
+		return
+	case <-timer.C:
+		panic("no response for the proposal")
+	case <-rs.AppliedC():
+	}
+}
+
+func (te *testEnv) startResponseChecker() {
+	for i := uint64(0); i < te.ts.testClientWorkerCount; i++ {
+		te.stopper.RunWorker(func() {
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-te.stopper.ShouldStop():
+					return
+				case <-ticker.C:
+					te.checkProposalResponse()
+				}
+			}
+		})
+	}
+}
+
 func (te *testEnv) startFastWorker() {
 	te.stopper.RunWorker(func() {
 		ticker := time.NewTicker(1 * time.Second)
@@ -1598,7 +1648,6 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	if rand.Uint64()%2 == 0 {
 		te.nodehosts[1].setupPartitionTests(partitionTestDuration)
 	}
-	// start the cluster
 	check(t, te.checkDrummerLeaderReady, 10)
 	plog.Infof("going to submit jobs")
 	if !te.submitJobs(name) {
@@ -1609,22 +1658,18 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("all clusters launched, wait for drummer to be ready")
 	check(t, te.checkDrummerIsReady, 10)
 	plog.Infof("drummer is ready")
-	// randomly drop some packet
 	te.randomDropPacket(true)
-	// start a list of client workers that will make random write/read requests
-	// to the system
 	te.startRequestWorkers()
+	te.startResponseChecker()
 	if lessSnapshotTest() {
 		plog.Infof("going to start fast worker")
 		disableClusterRandomDelay(client.HardWorkerTestClusterID)
 		te.startFastWorker()
 	}
-	// start the linearizability checker manager
 	checker := lcm.NewCoordinator(context.Background(),
 		te.ts.LCMWorkerCount, 1, te.ts.drummerAPIAddrs)
 	checker.Start()
 	plog.Infof("going to start the monkey test")
-	// start monkeys
 	te.monkeyTest(t)
 	plog.Infof("going to stop the test clients")
 	// stop all client workers
@@ -1638,12 +1683,8 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	te.randomDropPacket(false)
 	plog.Infof("all nodes restarted")
 	check(t, te.checkDrummerIsReady, 60)
-	// stop the NodeHostInfo reporter on nodehost
-	// stop the drummer server
 	plog.Infof("going to check drummer cluster info")
-	// make sure the cluster is stable with 3 raft nodes
 	check(t, te.checkClusterState, 60)
-	// dump the linearizability checker history data to disk
 	checker.Stop()
 	checker.SaveAsJepsenLog(lcmlog)
 	checker.SaveAsEDNLog(ednlog)
