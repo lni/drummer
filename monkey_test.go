@@ -317,11 +317,10 @@ func getTestConfig() (config.Config, config.NodeHostConfig) {
 		CompactionOverhead: 100,
 	}
 	nhc := config.NodeHostConfig{
-		WALDir:                "drummermt",
-		NodeHostDir:           "drummermt",
-		RTTMillisecond:        50,
-		SystemTickerPrecision: 10 * time.Millisecond,
-		NotifyCommit:          true,
+		WALDir:         "drummermt",
+		NodeHostDir:    "drummermt",
+		RTTMillisecond: 300,
+		NotifyCommit:   true,
 		Expert: config.ExpertConfig{
 			ExecShards:  4,
 			LogDBShards: 1,
