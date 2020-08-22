@@ -600,6 +600,10 @@ func (n *testNode) startNodehostNode(ts *testSetup) {
 	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
 	config.RaftAddress = ts.nodehostAddrs[n.index]
 	config.FS = n.fs
+	if n.index == uint64(len(ts.nodehostAddrs))-1 {
+		plog.Infof("using a much higher RTTMillisecond")
+		config.RTTMillisecond = config.RTTMillisecond * 2
+	}
 	addr := ts.nodehostAPIAddrs[n.index]
 	nh, err := dragonboat.NewNodeHost(config)
 	if err != nil {
@@ -981,19 +985,13 @@ func waitForStableNodes(nodes []*testNode, seconds uint64) bool {
 }
 
 func (te *testEnv) brutalMonkeyPlay() {
-	tt := rand.Uint64() % 3
-	nodes := make([]*testNode, 0)
-	if tt == 0 || tt == 2 {
-		nodes = append(nodes, te.nodehosts...)
-	}
-	if tt == 1 || tt == 2 {
-		nodes = append(nodes, te.drummers...)
-	}
-	for _, n := range nodes {
-		if !n.isPartitionTestNode() && n.isRunning() {
-			n.stop()
-			plog.Infof("monkey brutally stopped %s %d", n.nodeType, n.index+1)
-			n.setNodeNext(te.low, te.high)
+	for _, nodes := range [][]*testNode{te.nodehosts, te.drummers} {
+		for _, n := range nodes {
+			if !n.isPartitionTestNode() && n.isRunning() {
+				n.stop()
+				plog.Infof("monkey brutally stopped %s %d", n.nodeType, n.index+1)
+				n.setNodeNext(te.low, te.high)
+			}
 		}
 	}
 }
