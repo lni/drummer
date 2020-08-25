@@ -10,6 +10,4 @@ require (
 	google.golang.org/grpc v1.22.0
 )
 
-replace github.com/lni/dragonboat/v3 => /Users/lni/src/dragonboat
-
 go 1.13
