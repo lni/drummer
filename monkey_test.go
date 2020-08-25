@@ -487,7 +487,6 @@ func (n *testNode) stop() {
 		plog.Infof("stopper on monkey %s stopped", addr)
 	}
 	atomic.StoreUint32(&done, 1)
-	n.nh = nil
 }
 
 func (n *testNode) start(ts *testSetup) {
@@ -857,8 +856,13 @@ func (te *testEnv) checkStateMachine(t *testing.T, nodes []*testNode, last bool)
 	return len(inconsistent) == 0
 }
 
-func (te *testEnv) startNodeHostNodes() {
+func (te *testEnv) startNodeHostNodes(startWorkers bool) {
 	te.startNodes(te.nodehosts)
+	if startWorkers {
+		for _, n := range te.nodehosts {
+			te.startResponseChecker(n.nh)
+		}
+	}
 }
 
 func (te *testEnv) startDrummerNodes() {
@@ -1024,6 +1028,7 @@ func (te *testEnv) monkeyPlay() {
 				} else {
 					plog.Infof("monkey will start %s %d", n.nodeType, n.index+1)
 					n.start(te.ts)
+					te.startResponseChecker(n.nh)
 					plog.Infof("monkey restarted %s %d", n.nodeType, n.index+1)
 				}
 				n.setNodeNext(te.low, te.high)
@@ -1320,12 +1325,10 @@ func (te *testEnv) stopWorkers() {
 	te.stopper.Stop()
 }
 
-func (te *testEnv) checkProposalResponse(workerID uint64) {
-	tn := te.nodehosts[rand.Uint64()%uint64(len(te.nodehosts))]
-	if !tn.isRunning() {
-		return
+func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
+	if nh.Stopped() {
+		return false
 	}
-	nh := tn.nh
 	clusterID := rand.Uint64()%te.ts.numOfClusters + 1
 	session := nh.GetNoOPSession(clusterID)
 	kv := &kv.KV{
@@ -1336,12 +1339,15 @@ func (te *testEnv) checkProposalResponse(workerID uint64) {
 	if err != nil {
 		panic(err)
 	}
-	plog.Infof("worker %d making a test proposal on %s, cluster %d",
-		workerID, nh.RaftAddress(), clusterID)
+	plog.Infof("making a test proposal on %s, cluster %d",
+		nh.RaftAddress(), clusterID)
 	rs, err := nh.Propose(session, data, 30*time.Second)
+	if err == dragonboat.ErrClosed || err == dragonboat.ErrClusterClosed {
+		return false
+	}
 	if err != nil {
 		plog.Errorf("propose failed %v", err)
-		return
+		return true
 	}
 	wait := 0
 	ticker := time.NewTicker(time.Second)
@@ -1349,37 +1355,37 @@ func (te *testEnv) checkProposalResponse(workerID uint64) {
 	for {
 		select {
 		case <-te.stopper.ShouldStop():
-			return
+			return false
 		case <-ticker.C:
 			wait++
 			if wait%10 == 0 {
-				plog.Infof("worker %d waited %d seconds", workerID, wait)
+				plog.Infof("waited %d seconds", wait)
 			}
 			if wait == 100 {
-				plog.Panicf("worker %d failed to get response", workerID)
+				panic("failed to get response")
 			}
 		case <-rs.AppliedC():
-			return
+			return true
 		}
 	}
+	return true
 }
 
-func (te *testEnv) startResponseChecker() {
-	for i := uint64(0); i < te.ts.testClientWorkerCount; i++ {
-		workerID := i
-		te.stopper.RunWorker(func() {
-			ticker := time.NewTicker(5 * time.Second)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-te.stopper.ShouldStop():
+func (te *testEnv) startResponseChecker(nh *dragonboat.NodeHost) {
+	te.stopper.RunWorker(func() {
+		ticker := time.NewTicker(5 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-te.stopper.ShouldStop():
+				return
+			case <-ticker.C:
+				if !te.checkProposalResponse(nh) {
 					return
-				case <-ticker.C:
-					te.checkProposalResponse(workerID)
 				}
 			}
-		})
-	}
+		}
+	})
 }
 
 func (te *testEnv) startFastWorker() {
@@ -1633,7 +1639,7 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	ts := newTestSetup(to)
 	te := createTestNodes(ts)
 	te.startDrummerNodes()
-	te.startNodeHostNodes()
+	te.startNodeHostNodes(true)
 	defer func() {
 		plog.Infof("cleanup called, going to stop drummer nodes")
 		te.stopDrummerNodes()
@@ -1669,7 +1675,6 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("drummer is ready")
 	te.randomDropPacket(true)
 	te.startRequestWorkers()
-	te.startResponseChecker()
 	if lessSnapshotTest() {
 		plog.Infof("going to start fast worker")
 		disableClusterRandomDelay(client.HardWorkerTestClusterID)
@@ -1687,7 +1692,7 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	disableRandomDelay()
 	plog.Infof("random large delay disabled")
 	// restore all nodehost instances and wait for long enough
-	te.startNodeHostNodes()
+	te.startNodeHostNodes(false)
 	te.startDrummerNodes()
 	te.randomDropPacket(false)
 	plog.Infof("all nodes restarted")
