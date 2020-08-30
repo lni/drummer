@@ -412,15 +412,11 @@ func (n *testNode) isPartitionTestNode() bool {
 }
 
 func (n *testNode) isRunning() bool {
-	if n.nh != nil && !n.stopped {
-		return true
-	}
-	return false
+	return n.nh != nil && !n.stopped
 }
 
 func (n *testNode) ignoreSync() {
-	memfs, ok := n.fs.(*dragonboat.MemFS)
-	if ok {
+	if memfs, ok := n.fs.(*dragonboat.MemFS); ok {
 		plog.Infof("SetIgnoreSyncs called")
 		n.nh.PartitionNode()
 		memfs.SetIgnoreSyncs(true)
@@ -429,8 +425,7 @@ func (n *testNode) ignoreSync() {
 }
 
 func (n *testNode) allowSync() {
-	memfs, ok := n.fs.(*dragonboat.MemFS)
-	if ok {
+	if memfs, ok := n.fs.(*dragonboat.MemFS); ok {
 		plog.Infof("ResetToSyncedState called")
 		if n.nh != nil {
 			n.nh.RestorePartitionedNode()
@@ -602,7 +597,7 @@ func (n *testNode) startNodehostNode(ts *testSetup) {
 	config.FS = n.fs
 	if n.index == uint64(len(ts.nodehostAddrs))-1 {
 		plog.Infof("using a much higher RTTMillisecond")
-		config.RTTMillisecond = config.RTTMillisecond * 2
+		config.RTTMillisecond = config.RTTMillisecond * 3
 	}
 	addr := ts.nodehostAPIAddrs[n.index]
 	nh, err := dragonboat.NewNodeHost(config)
@@ -971,13 +966,11 @@ func waitForStableNodes(nodes []*testNode, seconds uint64) bool {
 		return true
 	}
 	for {
-		done := tryWait(nodes, seconds)
-		if !done {
+		if done := tryWait(nodes, seconds); !done {
 			return false
 		}
 		time.Sleep(waitInBetweenSecond * time.Second)
-		done = tryWait(nodes, seconds)
-		if done {
+		if done := tryWait(nodes, seconds); done {
 			return true
 		}
 		time.Sleep(waitInBetweenSecond * time.Second)
@@ -1004,8 +997,7 @@ func (te *testEnv) monkeyPlay() {
 				if n.next == 0 {
 					n.setNodeNext(te.low, te.high)
 					continue
-				}
-				if n.next > te.second {
+				} else if n.next > te.second {
 					continue
 				}
 				if rand.Uint64()%100 == 0 && n.isRunning() {
