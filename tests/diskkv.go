@@ -144,6 +144,11 @@ func NewPebbleFS(fs config.IFS) pvfs.FS {
 	return &PebbleFS{fs}
 }
 
+// GetFreeSpace ...
+func (p *PebbleFS) GetFreeSpace(path string) (uint64, error) {
+	return p.fs.GetFreeSpace(path)
+}
+
 // Create ...
 func (p *PebbleFS) Create(name string) (pvfs.File, error) {
 	return p.fs.Create(name)
