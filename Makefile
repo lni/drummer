@@ -70,7 +70,7 @@ test:
 
 .PHONY: test-tests
 test-tests:
-	$(GO) test -count=1 -v -tags="$(DRUMMER_MONKEY_TEST_TAGS)" $(PKGNAME)/tests
+	$(GO) test -count=1 -v -tags="$(DRUMMER_MONKEY_TEST_TAG)" $(PKGNAME)/tests
 
 .PHONY: runtest
 runtest:
