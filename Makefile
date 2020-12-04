@@ -40,11 +40,8 @@ all:
 	@echo " make test-tests"
 	@echo " make monkey-test"
 	@echo " make ondisk-monkey-test"
-	@echo " make monkey-test-travis"
-	@echo " make ondisk-monkey-test-travis"
 	@echo " make race-monkey-test"
 	@echo " make race-ondisk-monkey-test"
-	@echo " make race-monkey-test-travis"
 	@echo " make clean"
 	@echo " "
 	@echo "set the DRAGONBOAT_MEMFS_TEST environment varible to use memfs, e.g."
@@ -58,12 +55,6 @@ $(DRUMMER_MONKEY_TEST_BIN):
 $(PORCUPINE_CHECKER_BIN):
 	$(GO) build -o $@ $(VERBOSE) $(PKGNAME)/lcm/checker
 
-.PHONY: check
-check:
-	if [ -f $(JEPSEN_FILE) ]; then \
-  	./$(PORCUPINE_CHECKER_BIN) -path $(JEPSEN_FILE) -timeout 30; \
- 	fi
-
 .PHONY: test
 test:
 	$(GO) test -count=1 -v $(PKGNAME)
@@ -73,8 +64,11 @@ test-tests:
 	$(GO) test -count=1 -v -tags="$(DRUMMER_MONKEY_TEST_TAG)" $(PKGNAME)/tests
 
 .PHONY: runtest
-runtest:
+runtest: $(PORCUPINE_CHECKER_BIN)
 	./$(DRUMMER_MONKEY_TEST_BIN) $(TEST_OPTION) $(SILENT) $(SLOWVM) -test.run $(TARGET)
+	if [ -f $(JEPSEN_FILE) ]; then \
+    ./$(PORCUPINE_CHECKER_BIN) -path $(JEPSEN_FILE) -timeout 30; \
+  fi
 
 .PHONY: monkey-test
 monkey-test: override TARGET := $(MONKEY_TEST_NAME)
@@ -86,20 +80,6 @@ ondisk-monkey-test: override TARGET := $(ONDISK_MONKEY_TEST_NAME)
 ondisk-monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
 ondisk-monkey-test: runtest
 
-.PHONY: monkey-test-travis
-monkey-test-travis: override SILENT := -silent
-monkey-test-travis: override SLOWVM := -slowvm
-monkey-test-travis: override TARGET := $(TRAVIS_MONKEY_TEST_NAME)
-monkey-test-travis: $(DRUMMER_MONKEY_TEST_BIN)
-monkey-test-travis: runtest
-
-.PHONY: ondisk-monkey-test-travis
-ondisk-monkey-test-travis: override SILENT := --silent
-ondisk-monkey-test-travis: override SLOWVM := -slowvm
-ondisk-monkey-test-travis: override TARGET := $(TRAVIS_ONDISK_MONKEY_TEST_NAME)
-ondisk-monkey-test-travis: $(DRUMMER_MONKEY_TEST_BIN)
-ondisk-monkey-test-travis: runtest
-
 .PHONY: race-monkey-test
 race-monkey-test: override RACE := -race
 race-monkey-test: monkey-test
@@ -107,11 +87,6 @@ race-monkey-test: monkey-test
 .PHONY: race-ondisk-monkey-test
 race-ondisk-monkey-test: override RACE := -race
 race-ondisk-monkey-test: ondisk-monkey-test
-
-.PHONY: race-monkey-test-travis
-race-monkey-test-travis: override RACE := -race
-race-monkey-test-travis: override SLOWVM := -slowvm
-race-monkey-test-travis: monkey-test-travis
 
 .PHONY: clean
 clean:
