@@ -56,11 +56,11 @@ $(PORCUPINE_CHECKER_BIN):
 	$(GO) build -o $@ $(VERBOSE) $(PKGNAME)/lcm/checker
 
 .PHONY: test
-test:
+test: test-rsm
 	$(GO) test -count=1 -v $(PKGNAME)
 
-.PHONY: test-tests
-test-tests:
+.PHONY: test-rsm
+test-rsm:
 	$(GO) test -count=1 -v -tags="$(DRUMMER_MONKEY_TEST_TAG)" $(PKGNAME)/tests
 
 .PHONY: runtest
