@@ -88,6 +88,14 @@ race-monkey-test: monkey-test
 race-ondisk-monkey-test: override RACE := -race
 race-ondisk-monkey-test: ondisk-monkey-test
 
+.PHONY: memfs-monkey-test
+memfs-monkey-test: BUILD_TAGS+=$(MEMFS_TAG)
+memfs-monkey-test: monkey-test
+
+.PHONY: memfs-ondisk-monkey-test
+memfs-ondisk-monkey-test: BUILD_TAGS+=$(MEMFS_TAG)
+memfs-ondisk-monkey-test: ondisk-monkey-test
+
 .PHONY: clean
 clean:
 	@find . -type d -name "*safe_to_delete" -print | xargs rm -rf
