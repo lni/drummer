@@ -309,6 +309,8 @@ func saveTestDir() {
 }
 
 func getTestConfig() (config.Config, config.NodeHostConfig) {
+	lc := config.GetTinyMemLogDBConfig()
+	lc.Shards = 1
 	rc := config.Config{
 		ElectionRTT:        20,
 		HeartbeatRTT:       1,
@@ -322,8 +324,8 @@ func getTestConfig() (config.Config, config.NodeHostConfig) {
 		RTTMillisecond: 300,
 		NotifyCommit:   true,
 		Expert: config.ExpertConfig{
-			ExecShards:  4,
-			LogDBShards: 1,
+			ExecShards: 4,
+			LogDB:      lc,
 		},
 	}
 	return rc, nhc
@@ -556,7 +558,7 @@ func (n *testNode) startDrummerNode(ts *testSetup) {
 	config.NodeHostDir = n.fs.PathJoin(n.dir, nhc.NodeHostDir)
 	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
 	config.RaftAddress = ts.drummerAddrs[n.index]
-	config.FS = n.fs
+	config.Expert.FS = n.fs
 	nh, err := dragonboat.NewNodeHost(config)
 	if err != nil {
 		panic(err)
@@ -593,7 +595,7 @@ func (n *testNode) startNodehostNode(ts *testSetup) {
 	config.NodeHostDir = n.fs.PathJoin(n.dir, nhc.NodeHostDir)
 	config.WALDir = n.fs.PathJoin(n.dir, nhc.WALDir)
 	config.RaftAddress = ts.nodehostAddrs[n.index]
-	config.FS = n.fs
+	config.Expert.FS = n.fs
 	if n.index == uint64(len(ts.nodehostAddrs))-1 {
 		plog.Infof("using a much higher RTTMillisecond")
 		config.RTTMillisecond = config.RTTMillisecond * 3
