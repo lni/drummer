@@ -1355,7 +1355,7 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 			if wait%10 == 0 {
 				plog.Infof("waited %d seconds, cluster %d", wait, clusterID)
 			}
-			if wait == 40 {
+			if wait == 20 {
 				plog.Panicf("failed to get response, cluster %d", clusterID)
 			}
 		case <-rs.AppliedC():
