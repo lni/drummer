@@ -1335,7 +1335,7 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 	}
 	plog.Infof("making a test proposal on %s, cluster %d",
 		nh.RaftAddress(), clusterID)
-	rs, err := nh.Propose(session, data, 30*time.Second)
+	rs, err := nh.Propose(session, data, 10*time.Second)
 	if err == dragonboat.ErrClosed || err == dragonboat.ErrClusterClosed {
 		return false
 	}
@@ -1355,7 +1355,7 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 			if wait%10 == 0 {
 				plog.Infof("waited %d seconds, cluster %d", wait, clusterID)
 			}
-			if wait == 100 {
+			if wait == 40 {
 				plog.Panicf("failed to get response, cluster %d", clusterID)
 			}
 		case <-rs.AppliedC():
