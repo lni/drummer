@@ -321,7 +321,7 @@ func getTestConfig() (config.Config, config.NodeHostConfig) {
 	nhc := config.NodeHostConfig{
 		WALDir:         "drummermt",
 		NodeHostDir:    "drummermt",
-		RTTMillisecond: 300,
+		RTTMillisecond: 500,
 		NotifyCommit:   true,
 		Expert: config.ExpertConfig{
 			ExecShards: 4,
@@ -597,7 +597,7 @@ func (n *testNode) startNodehostNode(ts *testSetup) {
 	config.RaftAddress = ts.nodehostAddrs[n.index]
 	config.Expert.FS = n.fs
 	if n.index == uint64(len(ts.nodehostAddrs))-1 {
-		plog.Infof("using a much higher RTTMillisecond")
+		plog.Infof("using a much higher RTTMillisecond for %s", config.RaftAddress)
 		config.RTTMillisecond = config.RTTMillisecond * 3
 	}
 	addr := ts.nodehostAPIAddrs[n.index]
@@ -1333,8 +1333,8 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 	if err != nil {
 		panic(err)
 	}
-	plog.Infof("making a test proposal on %s, cluster %d",
-		nh.RaftAddress(), clusterID)
+	plog.Infof("making a test proposal on %s, cluster %d, %d bytes",
+		nh.RaftAddress(), clusterID, len(data))
 	rs, err := nh.Propose(session, data, 10*time.Second)
 	if err == dragonboat.ErrClosed || err == dragonboat.ErrClusterClosed {
 		return false
@@ -1355,8 +1355,9 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 			if wait%10 == 0 {
 				plog.Infof("waited %d seconds, cluster %d", wait, clusterID)
 			}
-			if wait == 20 {
-				plog.Panicf("failed to get response, cluster %d", clusterID)
+			if wait == 15 {
+				plog.Panicf("failed to get response, cluster %d, nh %s",
+					clusterID, nh.ID())
 			}
 		case <-rs.AppliedC():
 			return true
