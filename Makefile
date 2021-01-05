@@ -20,8 +20,6 @@ MEMFS_TAG := dragonboat_memfs_test
 PORCUPINE_CHECKER_BIN := porcupine-checker-bin
 MONKEY_TEST_NAME := TestMonkeyPlay$$
 ONDISK_MONKEY_TEST_NAME := TestOnDiskSMMonkeyPlay$$
-TRAVIS_ONDISK_MONKEY_TEST_NAME := TestOnDiskSMMonkeyPlayTravis$$
-TRAVIS_MONKEY_TEST_NAME := TestMonkeyPlayTravis$$
 JEPSEN_FILE := drummer-lcm.jepsen
 EDN_FILE := drummer-lcm.edn
 
