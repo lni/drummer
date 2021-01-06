@@ -18,8 +18,9 @@ DRUMMER_MONKEY_TEST_BIN := drummer-monkey-testing
 DRUMMER_MONKEY_TEST_TAG := dragonboat_monkeytest
 MEMFS_TAG := dragonboat_memfs_test
 PORCUPINE_CHECKER_BIN := porcupine-checker-bin
-MONKEY_TEST_NAME := TestMonkeyPlay$$
-ONDISK_MONKEY_TEST_NAME := TestOnDiskSMMonkeyPlay$$
+MONKEY_TEST_NAME := ^TestMonkeyPlay$$
+CONCURRENT_TEST_NAME := ^TestConcurrentSMMonkeyPlay$$
+ONDISK_MONKEY_TEST_NAME := ^TestOnDiskSMMonkeyPlay$$
 JEPSEN_FILE := drummer-lcm.jepsen
 EDN_FILE := drummer-lcm.edn
 
@@ -73,6 +74,11 @@ monkey-test: override TARGET := $(MONKEY_TEST_NAME)
 monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
 monkey-test: runtest
 
+.PHONY: concurrent-monkey-test
+concurrent-monkey-test: override TARGET := $(CONCURRENT_TEST_NAME)
+concurrent-monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
+concurrent-monkey-test: runtest
+
 .PHONY: ondisk-monkey-test
 ondisk-monkey-test: override TARGET := $(ONDISK_MONKEY_TEST_NAME)
 ondisk-monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
@@ -82,6 +88,10 @@ ondisk-monkey-test: runtest
 race-monkey-test: override RACE := -race
 race-monkey-test: monkey-test
 
+.PHONY: race-concurrent-monkey-test
+race-concurrent-monkey-test: override RACE := -race
+race-concurrent-monkey-test: concurrent-monkey-test
+
 .PHONY: race-ondisk-monkey-test
 race-ondisk-monkey-test: override RACE := -race
 race-ondisk-monkey-test: ondisk-monkey-test
@@ -89,6 +99,10 @@ race-ondisk-monkey-test: ondisk-monkey-test
 .PHONY: memfs-monkey-test
 memfs-monkey-test: BUILD_TAGS+=$(MEMFS_TAG)
 memfs-monkey-test: monkey-test
+
+.PHONY: memfs-concurrent-monkey-test
+memfs-concurrent-monkey-test: BUILD_TAGS+=$(MEMFS_TAG)
+memfs-concurrent-monkey-test: concurrent-monkey-test
 
 .PHONY: memfs-ondisk-monkey-test
 memfs-ondisk-monkey-test: BUILD_TAGS+=$(MEMFS_TAG)
