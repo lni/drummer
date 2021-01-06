@@ -14,25 +14,18 @@
 
 GO := go
 PKGNAME := github.com/lni/drummer/v3
-DRUMMER_MONKEY_TEST_BIN := drummer-monkey-testing
-DRUMMER_MONKEY_TEST_TAG := dragonboat_monkeytest
+MONKEY_TEST_TAG := dragonboat_monkeytest
 MEMFS_TAG := dragonboat_memfs_test
 PORCUPINE_CHECKER_BIN := porcupine-checker-bin
 MONKEY_TEST_NAME := ^TestMonkeyPlay$$
 CONCURRENT_TEST_NAME := ^TestConcurrentSMMonkeyPlay$$
-ONDISK_MONKEY_TEST_NAME := ^TestOnDiskSMMonkeyPlay$$
+ONDISK_TEST_NAME := ^TestOnDiskSMMonkeyPlay$$
 JEPSEN_FILE := drummer-lcm.jepsen
 EDN_FILE := drummer-lcm.edn
 MAIN_PKG := github.com/lni/dragonboat/v3
 COVER_PKG := $(MAIN_PKG),$(MAIN_PKG)/internal/raft,$(MAIN_PKG)/internal/rsm,$(MAIN_PKG)/internal/transport,$(MAIN_PKG)/internal/logdb,$(PKGNAME)
 
-TEST_OPTION := -test.v -test.timeout 3200s
-
-BUILD_TAGS := $(DRUMMER_MONKEY_TEST_TAG)
-ifneq ($(DRAGONBOAT_MEMFS_TEST),)
-$(info using memfs based pebble)
-BUILD_TAGS+=$(MEMFS_TAG)
-endif
+BUILD_TAGS := $(MONKEY_TEST_TAG)
 
 .PHONY: all
 all:
@@ -48,10 +41,6 @@ all:
 	@echo "set the DRAGONBOAT_MEMFS_TEST environment varible to use memfs, e.g."
 	@echo " DRAGONBOAT_MEMFS_TEST=1 make monkey-test"
 
-.PHONY: $(DRUMMER_MONKEY_TEST_BIN)
-$(DRUMMER_MONKEY_TEST_BIN):
-	$(GO) test $(RACE) -tags="$(BUILD_TAGS)" -c -o $@ $(PKGNAME)
-
 .PHONY: $(PORCUPINE_CHECKER_BIN)
 $(PORCUPINE_CHECKER_BIN):
 	$(GO) build -o $@ $(VERBOSE) $(PKGNAME)/lcm/checker
@@ -62,34 +51,43 @@ test: test-rsm
 
 .PHONY: test-rsm
 test-rsm:
-	$(GO) test -count=1 -v -tags="$(DRUMMER_MONKEY_TEST_TAG)" $(PKGNAME)/tests
+	$(GO) test -count=1 -v -tags="$(MONKEY_TEST_TAG)" $(PKGNAME)/tests
 
 .PHONY: runtest
 runtest: $(PORCUPINE_CHECKER_BIN)
-	./$(DRUMMER_MONKEY_TEST_BIN) $(TEST_OPTION) $(SILENT) $(SLOWVM) -test.run $(TARGET)
+	$(GO) test -v -tags "$(BUILD_TAGS)" -timeout 3600s -run $(TARGET)
 	if [ -f $(JEPSEN_FILE) ]; then \
     ./$(PORCUPINE_CHECKER_BIN) -path $(JEPSEN_FILE) -timeout 30; \
   fi
 
 .PHONY: cover-test
 cover-test:
-	$(GO) test -v -tags $(DRUMMER_MONKEY_TEST_TAG) -cover -coverprofile=coverage.out \
+	$(GO) test -v -tags $(MONKEY_TEST_TAG) -cover -coverprofile=coverage.out \
 		-coverpkg $(COVER_PKG) -timeout 3600s -run $(MONKEY_TEST_NAME)
 
 .PHONY: monkey-test
 monkey-test: override TARGET := $(MONKEY_TEST_NAME)
-monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
 monkey-test: runtest
 
 .PHONY: concurrent-monkey-test
 concurrent-monkey-test: override TARGET := $(CONCURRENT_TEST_NAME)
-concurrent-monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
 concurrent-monkey-test: runtest
 
 .PHONY: ondisk-monkey-test
-ondisk-monkey-test: override TARGET := $(ONDISK_MONKEY_TEST_NAME)
-ondisk-monkey-test: $(DRUMMER_MONKEY_TEST_BIN)
+ondisk-monkey-test: override TARGET := $(ONDISK_TEST_NAME)
 ondisk-monkey-test: runtest
+
+.PHONY: monkey-cover-test
+monkey-cover-test: override TARGET := $(MONKEY_TEST_NAME)
+monkey-cover-test: cover-test
+
+.PHONY: concurrent-monkey-cover-test
+concurrent-monkey-cover-test: override TARGET := $(CONCURRENT_TEST_NAME)
+concurrent-monkey-cover-test: cover-test
+
+.PHONY: ondisk-monkey-cover-test
+ondisk-monkey-cover-test: override TARGET := $(ONDISK_TEST_NAME)
+ondisk-monkey-cover-test: cover-test
 
 .PHONY: race-monkey-test
 race-monkey-test: override RACE := -race
@@ -118,5 +116,4 @@ memfs-ondisk-monkey-test: ondisk-monkey-test
 .PHONY: clean
 clean:
 	@find . -type d -name "*safe_to_delete" -print | xargs rm -rf
-	@rm -f $(DRUMMER_MONKEY_TEST_BIN) $(PORCUPINE_CHECKER_BIN)
-	@rm -f $(JEPSEN_FILE) $(EDN_FILE) 
+	@rm -f $(PORCUPINE_CHECKER_BIN) $(JEPSEN_FILE) $(EDN_FILE)
