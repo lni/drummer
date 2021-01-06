@@ -48,6 +48,9 @@ import (
 
 const (
 	defaultBasePort    uint64 = 5700
+	defaultNodeID1     uint64 = 2345
+	defaultNodeID2     uint64 = 6789
+	defaultNodeID3     uint64 = 9876
 	defaultTestTimeout        = 5 * time.Second
 	lcmlog                    = "drummer-lcm.jepsen"
 	ednlog                    = "drummer-lcm.edn"
@@ -1077,7 +1080,7 @@ func submitClusters(count uint64,
 		clusterID := i + 1
 		ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 		if err := SubmitCreateDrummerChange(ctx,
-			dclient, clusterID, []uint64{2345, 6789, 9876}, name); err != nil {
+			dclient, clusterID, []uint64{defaultNodeID1, defaultNodeID2, defaultNodeID3}, name); err != nil {
 			plog.Errorf("failed to submit drummer change, cluster %d, %v",
 				clusterID, err)
 			cancel()
@@ -1324,6 +1327,10 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 		return false
 	}
 	clusterID := rand.Uint64()%te.ts.numOfClusters + 1
+	nodeID := []uint64{defaultNodeID1, defaultNodeID2, defaultNodeID3}[rand.Uint64()%3]
+	if err := nh.RequestLeaderTransfer(clusterID, nodeID); err != nil {
+		plog.Errorf("leader transfer request failed, %v", err)
+	}
 	session := nh.GetNoOPSession(clusterID)
 	kv := &kv.KV{
 		Key: fmt.Sprintf("proposal-response-check-key-%d", rand.Uint64()),
