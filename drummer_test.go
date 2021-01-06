@@ -90,6 +90,7 @@ func runDrummerMonkeyTest(t *testing.T, name string) {
 		logger.GetLogger("rsm").SetLevel(logger.DEBUG)
 		logger.GetLogger("logdb").SetLevel(logger.DEBUG)
 		logger.GetLogger("drummer/client").SetLevel(logger.DEBUG)
+		logger.GetLogger("monkey").SetLevel(logger.ERROR)
 	}
 	drummerMonkeyTesting(t, to, name)
 }
