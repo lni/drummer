@@ -23,7 +23,7 @@ ONDISK_TEST_NAME := ^TestOnDiskSMMonkeyPlay$$
 JEPSEN_FILE := drummer-lcm.jepsen
 EDN_FILE := drummer-lcm.edn
 MAIN_PKG := github.com/lni/dragonboat/v3
-COVER_PKG := $(MAIN_PKG),$(MAIN_PKG)/internal/raft,$(MAIN_PKG)/internal/rsm,$(MAIN_PKG)/internal/transport,$(MAIN_PKG)/internal/logdb,$(PKGNAME)
+COVER_PKG := $(MAIN_PKG),$(MAIN_PKG)/internal/raft,$(MAIN_PKG)/internal/rsm,$(MAIN_PKG)/internal/transport,$(MAIN_PKG)/internal/logdb,github.com/lni/dragonboat/v3/internal/logdb/kv/pebble,$(PKGNAME)
 
 BUILD_TAGS := $(MONKEY_TEST_TAG)
 
@@ -33,9 +33,17 @@ all:
 	@echo " make test"
 	@echo " make test-tests"
 	@echo " make monkey-test"
+	@echo " make concurrent-monkey-test"
 	@echo " make ondisk-monkey-test"
+	@echo " make monkey-cover-test"
+	@echo " make concurrent-monkey-cover-test"
+	@echo " make ondisk-monkey-cover-test"
 	@echo " make race-monkey-test"
+	@echo " make race-concurrent-monkey-test"
 	@echo " make race-ondisk-monkey-test"
+	@echo " make memfs-monkey-test"
+	@echo " make memfs-concurrent-monkey-test"
+	@echo " make memfs-ondisk-monkey-test"
 	@echo " make clean"
 	@echo " "
 	@echo "set the DRAGONBOAT_MEMFS_TEST environment varible to use memfs, e.g."
@@ -63,7 +71,12 @@ runtest: $(PORCUPINE_CHECKER_BIN)
 .PHONY: cover-test
 cover-test:
 	$(GO) test -v -tags $(MONKEY_TEST_TAG) -cover -coverprofile=coverage.out \
-		-coverpkg $(COVER_PKG) -timeout 3600s -run $(MONKEY_TEST_NAME)
+		-coverpkg $(COVER_PKG) -timeout 3600s -run $(TARGET)
+
+.PHONY: cover-test-all
+cover-test-all:
+	$(GO) test -v -tags $(MONKEY_TEST_TAG) -cover -coverprofile=coverage.out \
+    -coverpkg $(COVER_PKG) -timeout 7200s
 
 .PHONY: monkey-test
 monkey-test: override TARGET := $(MONKEY_TEST_NAME)
