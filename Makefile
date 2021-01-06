@@ -23,6 +23,8 @@ CONCURRENT_TEST_NAME := ^TestConcurrentSMMonkeyPlay$$
 ONDISK_MONKEY_TEST_NAME := ^TestOnDiskSMMonkeyPlay$$
 JEPSEN_FILE := drummer-lcm.jepsen
 EDN_FILE := drummer-lcm.edn
+MAIN_PKG := github.com/lni/dragonboat/v3
+COVER_PKG := $(MAIN_PKG),$(MAIN_PKG)/internal/raft,$(MAIN_PKG)/internal/rsm,$(MAIN_PKG)/internal/transport,$(MAIN_PKG)/internal/logdb,$(PKGNAME)
 
 TEST_OPTION := -test.v -test.timeout 3200s
 
@@ -68,6 +70,11 @@ runtest: $(PORCUPINE_CHECKER_BIN)
 	if [ -f $(JEPSEN_FILE) ]; then \
     ./$(PORCUPINE_CHECKER_BIN) -path $(JEPSEN_FILE) -timeout 30; \
   fi
+
+.PHONY: cover-test
+cover-test:
+	$(GO) test -v -tags $(DRUMMER_MONKEY_TEST_TAG) -cover -coverprofile=coverage.out \
+		-coverpkg $(COVER_PKG) -timeout 3600s -run $(MONKEY_TEST_NAME)
 
 .PHONY: monkey-test
 monkey-test: override TARGET := $(MONKEY_TEST_NAME)
