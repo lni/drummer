@@ -64,6 +64,6 @@ do
   jepsenfn="../lcmlog/drummer-lcm-$i-$testno.jepsen" 
   cp drummer-lcm.edn $ednfn
   cp $jepsen $jepsenfn
-  rm -rf test_rocksdb_db_safe_to_delete
+  rm -rf test_pebble_db_safe_to_delete
   rm -rf drummer_mt_pwd_safe_to_delete external-*.data
 done
