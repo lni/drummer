@@ -45,7 +45,7 @@ import (
 
 const (
 	appliedIndexKey    string = "disk_kv_applied_index"
-	testDBDirName      string = "test_rocksdb_db_safe_to_delete"
+	testDBDirName      string = "test_pebble_db_safe_to_delete"
 	currentDBFilename  string = "current"
 	updatingDBFilename string = "current.updating"
 )
