@@ -17,6 +17,7 @@ PKGNAME := github.com/lni/drummer/v3
 MONKEY_TEST_TAG := dragonboat_monkeytest
 MEMFS_TAG := dragonboat_memfs_test
 PORCUPINE_CHECKER_BIN := porcupine-checker-bin
+DRUMMER_MONKEY_TEST_BIN := drummer-monkey-testing
 MONKEY_TEST_NAME := ^TestMonkeyPlay$$
 CONCURRENT_TEST_NAME := ^TestConcurrentSMMonkeyPlay$$
 ONDISK_TEST_NAME := ^TestOnDiskSMMonkeyPlay$$
@@ -48,6 +49,10 @@ all:
 	@echo " "
 	@echo "set the DRAGONBOAT_MEMFS_TEST environment varible to use memfs, e.g."
 	@echo " DRAGONBOAT_MEMFS_TEST=1 make monkey-test"
+
+.PHONY: $(DRUMMER_MONKEY_TEST_BIN)
+$(DRUMMER_MONKEY_TEST_BIN):
+	$(GO) test $(RACE) -tags="$(BUILD_TAGS)" -c -o $@ $(PKGNAME)
 
 .PHONY: $(PORCUPINE_CHECKER_BIN)
 $(PORCUPINE_CHECKER_BIN):
@@ -129,4 +134,4 @@ memfs-ondisk-monkey-test: ondisk-monkey-test
 .PHONY: clean
 clean:
 	@find . -type d -name "*safe_to_delete" -print | xargs rm -rf
-	@rm -f $(PORCUPINE_CHECKER_BIN) $(JEPSEN_FILE) $(EDN_FILE)
+	@rm -f $(PORCUPINE_CHECKER_BIN) $(JEPSEN_FILE) $(EDN_FILE) $(DRUMMER_MONKEY_TEST_BIN)
