@@ -649,7 +649,12 @@ func (d *DiskKVTest) saveToWriter(db *pebbledb,
 	if _, err := w.Write(sz); err != nil {
 		return err
 	}
-	for _, dataKv := range values {
+	abort := random.LockGuardedRand.Uint64()%50 == 0
+	for idx, dataKv := range values {
+		if allowAbort && abort && idx == 2 {
+			fmt.Printf("snapshot aborted for testing purposes\n")
+			return sm.ErrSnapshotAborted
+		}
 		data, err := dataKv.MarshalBinary()
 		if err != nil {
 			panic(err)
@@ -660,9 +665,6 @@ func (d *DiskKVTest) saveToWriter(db *pebbledb,
 		}
 		if _, err := w.Write(data); err != nil {
 			return err
-		}
-		if allowAbort && random.LockGuardedRand.Uint64()%50 == 0 {
-			return sm.ErrSnapshotAborted
 		}
 	}
 	return nil
