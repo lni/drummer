@@ -621,7 +621,7 @@ func iteratorIsValid(iter *pebble.Iterator) bool {
 }
 
 func (d *DiskKVTest) saveToWriter(db *pebbledb,
-	ss *pebble.Snapshot, w io.Writer) error {
+	ss *pebble.Snapshot, w io.Writer, allowAbort bool) error {
 	iter := ss.NewIter(db.ro)
 	defer iter.Close()
 	var dataMap sync.Map
@@ -661,6 +661,9 @@ func (d *DiskKVTest) saveToWriter(db *pebbledb,
 		if _, err := w.Write(data); err != nil {
 			return err
 		}
+		if allowAbort && random.LockGuardedRand.Uint64()%50 == 0 {
+			return sm.ErrSnapshotAborted
+		}
 	}
 	return nil
 }
@@ -691,8 +694,7 @@ func (d *DiskKVTest) SaveSnapshot(ctx interface{},
 		idx := random.LockGuardedRand.Uint64() % rsz
 		rubbish[idx] = byte(random.LockGuardedRand.Uint64())
 	}
-	_, err := w.Write(rubbish)
-	if err != nil {
+	if _, err := w.Write(rubbish); err != nil {
 		return err
 	}
 	ctxdata := ctx.(*diskKVCtx)
@@ -701,7 +703,7 @@ func (d *DiskKVTest) SaveSnapshot(ctx interface{},
 	defer db.mu.RUnlock()
 	ss := ctxdata.snapshot
 	defer ss.Close()
-	return d.saveToWriter(db, ss, w)
+	return d.saveToWriter(db, ss, w, true)
 }
 
 // RecoverFromSnapshot recovers the state machine state from snapshot.
@@ -812,7 +814,7 @@ func (d *DiskKVTest) GetHash() (uint64, error) {
 	defer ss.Close()
 	db.mu.RLock()
 	defer db.mu.RUnlock()
-	if err := d.saveToWriter(db, ss, h); err != nil {
+	if err := d.saveToWriter(db, ss, h, false); err != nil {
 		return 0, err
 	}
 	md5sum := h.Sum(nil)

@@ -1378,16 +1378,47 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 	return true
 }
 
+func (te *testEnv) checkSnapshotOp(nh *dragonboat.NodeHost) bool {
+	if nh.Stopped() {
+		return false
+	}
+	clusterID := rand.Uint64()%te.ts.numOfClusters + 1
+	clusterID2 := rand.Uint64()%te.ts.numOfClusters + 1
+	nodeID := []uint64{defaultNodeID1, defaultNodeID2, defaultNodeID3}[rand.Uint64()%3]
+	rs, err := nh.RequestSnapshot(clusterID, dragonboat.DefaultSnapshotOption, 2*time.Second)
+	if err != nil {
+		return true
+	}
+	rs2, err := nh.RequestCompaction(clusterID2, nodeID)
+	if err != nil {
+		return true
+	}
+	select {
+	case <-rs.CompletedC:
+		return true
+	case <-te.stopper.ShouldStop():
+		return false
+	case <-rs2.CompletedC():
+		return true
+	}
+}
+
 func (te *testEnv) startResponseChecker(nh *dragonboat.NodeHost) {
 	te.stopper.RunWorker(func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
+		slowTicker := time.NewTicker(30 * time.Second)
+		defer slowTicker.Stop()
 		for {
 			select {
 			case <-te.stopper.ShouldStop():
 				return
 			case <-ticker.C:
 				if !te.checkProposalResponse(nh) {
+					return
+				}
+			case <-slowTicker.C:
+				if !te.checkSnapshotOp(nh) {
 					return
 				}
 			}
