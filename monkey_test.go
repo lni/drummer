@@ -1379,7 +1379,7 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 }
 
 func (te *testEnv) checkSnapshotOp(nh *dragonboat.NodeHost) bool {
-	if nh.Stopped() {
+	if nh.Stopped() || snapshotDisabledInConfig() {
 		return false
 	}
 	clusterID := rand.Uint64()%te.ts.numOfClusters + 1
