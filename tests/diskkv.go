@@ -433,13 +433,14 @@ func cleanupNodeDataDir(dir string, fs config.IFS) error {
 
 // DiskKVTest is a state machine used for testing on disk kv.
 type DiskKVTest struct {
-	clusterID   uint64
-	nodeID      uint64
-	lastApplied uint64
-	db          unsafe.Pointer
-	closed      bool
-	aborted     bool
-	fs          config.IFS
+	clusterID            uint64
+	nodeID               uint64
+	lastApplied          uint64
+	db                   unsafe.Pointer
+	closed               bool
+	aborted              bool
+	disableSnapshotAbort bool
+	fs                   config.IFS
 }
 
 // NewDiskKVTest creates a new disk kv test state machine.
@@ -651,7 +652,7 @@ func (d *DiskKVTest) saveToWriter(db *pebbledb,
 	}
 	abort := random.LockGuardedRand.Uint64()%50 == 0
 	for idx, dataKv := range values {
-		if allowAbort && abort && idx == 2 {
+		if !d.disableSnapshotAbort && allowAbort && abort && idx == 2 {
 			fmt.Printf("snapshot aborted for testing purposes\n")
 			return sm.ErrSnapshotAborted
 		}

@@ -269,6 +269,7 @@ func TestDiskKVCanBeUpdated(t *testing.T) {
 func TestDiskKVSnapshot(t *testing.T) {
 	fs := dragonboat.GetTestFS()
 	tf := func(t *testing.T, odsm sm.IOnDiskStateMachine) {
+		odsm.(*DiskKVTest).disableSnapshotAbort = true
 		odsm.(*DiskKVTest).SetTestFS(fs)
 		idx, err := odsm.Open(nil)
 		if err != nil {
