@@ -214,6 +214,8 @@ func getRandomClusterID(size uint64) uint64 {
 }
 
 type testSetup struct {
+	snapshotWorkerCount       uint64
+	applyWorkerCount          uint64
 	monkeyTestSecondToRun     uint64
 	numOfClusters             uint64
 	numOfTestDrummerNodes     uint64
@@ -250,6 +252,8 @@ func newTestSetup(to *testOption) *testSetup {
 		nodehostAPIAddrs:          make([]string, 0),
 		drummerDirs:               make([]string, 0),
 		nodehostDirs:              make([]string, 0),
+		snapshotWorkerCount:       to.snapshotWorkerCount,
+		applyWorkerCount:          to.workerCount,
 		monkeyTestSecondToRun:     1200,
 		numOfClusters:             128,
 		numOfTestDrummerNodes:     3,
@@ -311,9 +315,13 @@ func saveTestDir() {
 	}
 }
 
-func getTestConfig() (config.Config, config.NodeHostConfig) {
+func getTestConfig(ts *testSetup) (config.Config, config.NodeHostConfig) {
 	lc := config.GetTinyMemLogDBConfig()
 	lc.Shards = 1
+	ec := config.GetDefaultEngineConfig()
+	ec.ExecShards = 4
+	ec.SnapshotShards = ts.snapshotWorkerCount
+	ec.ApplyShards = ts.applyWorkerCount
 	rc := config.Config{
 		ElectionRTT:        20,
 		HeartbeatRTT:       1,
@@ -327,8 +335,8 @@ func getTestConfig() (config.Config, config.NodeHostConfig) {
 		RTTMillisecond: 500,
 		NotifyCommit:   true,
 		Expert: config.ExpertConfig{
-			ExecShards: 4,
-			LogDB:      lc,
+			LogDB:  lc,
+			Engine: ec,
 		},
 	}
 	return rc, nhc
@@ -555,7 +563,7 @@ func (n *testNode) startDrummerNode(ts *testSetup) {
 	if !n.stopped {
 		panic("already running")
 	}
-	rc, nhc := getTestConfig()
+	rc, nhc := getTestConfig(ts)
 	config := config.NodeHostConfig{}
 	config = nhc
 	config.NodeHostDir = n.fs.PathJoin(n.dir, nhc.NodeHostDir)
@@ -592,7 +600,7 @@ func (n *testNode) startNodehostNode(ts *testSetup) {
 	if !n.stopped {
 		panic("already running")
 	}
-	_, nhc := getTestConfig()
+	_, nhc := getTestConfig(ts)
 	config := config.NodeHostConfig{}
 	config = nhc
 	config.NodeHostDir = n.fs.PathJoin(n.dir, nhc.NodeHostDir)

@@ -67,8 +67,6 @@ func runDrummerMonkeyTest(t *testing.T, name string) {
 		to.snapshotWorkerCount, to.workerCount)
 	plog.Infof("queue size: %d", to.queueLength)
 	runtime.GOMAXPROCS(int(to.maxProcs))
-	dragonboat.SetSnapshotWorkerCount(to.snapshotWorkerCount)
-	dragonboat.SetApplyWorkerCount(to.workerCount)
 	dragonboat.SetReceiveQueueLen(to.queueLength)
 	dragonboat.SetTaskBatchSize(8)
 	dragonboat.SetIncomingProposalsMaxLen(64)
