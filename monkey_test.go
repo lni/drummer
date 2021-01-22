@@ -1104,12 +1104,12 @@ func submitClusters(count uint64,
 	defer cancel()
 	plog.Infof("going to set region")
 	if err := SubmitRegions(ctx, dclient, regions); err != nil {
-		plog.Errorf("failed to submit region info")
+		plog.Errorf("failed to submit region info, %v", err)
 		return err
 	}
 	plog.Infof("going to set the bootstrapped flag")
 	if err := SubmitBootstrappped(ctx, dclient); err != nil {
-		plog.Errorf("failed to set bootstrapped flag")
+		plog.Errorf("failed to set bootstrapped flag, %v", err)
 		return err
 	}
 
@@ -1340,6 +1340,9 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 		plog.Errorf("leader transfer request failed, %v", err)
 	}
 	session := nh.GetNoOPSession(clusterID)
+	if session == nil {
+		return true
+	}
 	kv := &kv.KV{
 		Key: fmt.Sprintf("proposal-response-check-key-%d", rand.Uint64()),
 		Val: fmt.Sprintf("proposal-response-check-val-%d", rand.Uint64()),
