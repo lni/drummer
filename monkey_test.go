@@ -487,7 +487,7 @@ func (n *testNode) stop() {
 	if n.drummerClient != nil {
 		n.drummerClient.Stop()
 	}
-	n.nh.Stop()
+	n.nh.Close()
 	plog.Infof("the nh part of %s stopped", addr)
 	if n.stopper != nil {
 		plog.Infof("monkey node has a stopper, %s", addr)
