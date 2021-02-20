@@ -17,9 +17,10 @@ package tests
 import (
 	"bytes"
 	"encoding/binary"
-	"os"
 	"path"
 	"testing"
+
+	"github.com/cockroachdb/errors/oserror"
 
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
@@ -33,7 +34,7 @@ func TestDBCanBeCreatedAndUsed(t *testing.T) {
 	defer fs.RemoveAll(dbdir)
 	db, err := createDB(dbdir, fs)
 	if err != nil {
-		t.Fatalf("failed to create db %v", err)
+		t.Fatalf("failed to create db %+v", err)
 	}
 	defer db.close()
 	key := []byte("test-key")
@@ -110,7 +111,7 @@ func TestSaveCurrentDBDirName(t *testing.T) {
 	if err := saveCurrentDBDirName(dbdir, content, fs); err != nil {
 		t.Fatalf("failed to save current file %v", err)
 	}
-	if _, err := fs.Stat(fs.PathJoin(dbdir, updatingDBFilename)); os.IsNotExist(err) {
+	if _, err := fs.Stat(fs.PathJoin(dbdir, updatingDBFilename)); oserror.IsNotExist(err) {
 		t.Fatalf("file not exist")
 	}
 	if !isNewRun(dbdir, fs) {
@@ -167,7 +168,7 @@ func TestCleanupNodeDataDir(t *testing.T) {
 		{path.Join(dbdir, "d2"), false},
 	}
 	for idx, tt := range tests {
-		if _, err := fs.Stat(tt.name); os.IsNotExist(err) {
+		if _, err := fs.Stat(tt.name); oserror.IsNotExist(err) {
 			if tt.exist {
 				t.Errorf("unexpected cleanup result %d", idx)
 			}

@@ -32,8 +32,10 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/cockroachdb/errors/oserror"
 	"github.com/cockroachdb/pebble"
 	pvfs "github.com/cockroachdb/pebble/vfs"
+	"github.com/lni/vfs"
 
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
@@ -55,7 +57,7 @@ func DirExist(name string, fs config.IFS) (bool, error) {
 		return true, nil
 	}
 	f, err := fs.OpenDir(name)
-	if err != nil && os.IsNotExist(err) {
+	if err != nil && oserror.IsNotExist(err) {
 		return false, nil
 	}
 	if err != nil {
@@ -281,7 +283,9 @@ func createDB(dbdir string, fs config.IFS) (*pebbledb, error) {
 		MaxManifestFileSize: 1024 * 32,
 		MemTableSize:        1024 * 32,
 		Cache:               cache,
-		FS:                  NewPebbleFS(fs),
+	}
+	if fs != vfs.Default {
+		opts.FS = NewPebbleFS(fs)
 	}
 	if err := MkdirAll(dbdir, fs); err != nil {
 		return nil, err
@@ -301,7 +305,7 @@ func createDB(dbdir string, fs config.IFS) (*pebbledb, error) {
 
 func isNewRun(dir string, fs config.IFS) bool {
 	fp := fs.PathJoin(dir, currentDBFilename)
-	if _, err := fs.Stat(fp); os.IsNotExist(err) {
+	if _, err := fs.Stat(fp); oserror.IsNotExist(err) {
 		return true
 	}
 	return false
@@ -505,7 +509,7 @@ func (d *DiskKVTest) Open(stopc <-chan struct{}) (uint64, error) {
 			return 0, err
 		}
 		if _, err := d.fs.Stat(dbdir); err != nil {
-			if os.IsNotExist(err) {
+			if oserror.IsNotExist(err) {
 				panic("db dir unexpectedly deleted")
 			}
 		}
