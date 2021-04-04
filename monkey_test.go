@@ -380,8 +380,7 @@ func (n *testNode) mustBeNodehost() {
 
 func (n *testNode) removeNodeHostDir() {
 	n.mustBeNodehost()
-	idx := n.index + 1
-	nn := fmt.Sprintf("nodehost-node-%d", idx)
+	nn := fmt.Sprintf("nodehost-node-%d", n.index)
 	nd := n.fs.PathJoin(monkeyTestWorkingDir, nn)
 	plog.Infof("monkey is going to delete nodehost dir at %s for testing", nd)
 	if err := n.fs.RemoveAll(nd); err != nil {
