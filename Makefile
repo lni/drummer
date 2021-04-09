@@ -131,6 +131,10 @@ memfs-concurrent-monkey-test: concurrent-monkey-test
 memfs-ondisk-monkey-test: BUILD_TAGS+=$(MEMFS_TAG)
 memfs-ondisk-monkey-test: ondisk-monkey-test
 
+.PHONY: memfs-monkey-test-bin
+memfs-monkey-test-bin: BUILD_TAGS+=$(MEMFS_TAG)
+memfs-monkey-test-bin: drummer-monkey-testing
+
 .PHONY: clean
 clean:
 	@find . -type d -name "*safe_to_delete" -print | xargs rm -rf

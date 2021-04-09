@@ -64,7 +64,7 @@ deploy()
     make -C .. drummer-monkey-testing
   else
     echo "memfs test mode, sm type: $smtype"
-    DRAGONBOAT_MEMFS_TEST=1 make -C .. drummer-monkey-testing
+    make -C .. memfs-monkey-test-bin
   fi
   make -C .. porcupine-checker-bin
   rm -rf $TARGETDIR/*
