@@ -38,6 +38,8 @@ import (
 
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
+	"github.com/lni/dragonboat/v3/plugin/tan"
+	"github.com/lni/dragonboat/v3/plugin/tee"
 	"github.com/lni/dragonboat/v3/raftpb"
 	"github.com/lni/drummer/v3/client"
 	pb "github.com/lni/drummer/v3/drummerpb"
@@ -335,8 +337,9 @@ func getTestConfig(ts *testSetup) (config.Config, config.NodeHostConfig) {
 		RTTMillisecond: 500,
 		NotifyCommit:   true,
 		Expert: config.ExpertConfig{
-			LogDB:  lc,
-			Engine: ec,
+			LogDB:        lc,
+			Engine:       ec,
+			LogDBFactory: tan.Factory,
 		},
 	}
 	return rc, nhc
@@ -431,7 +434,13 @@ func (n *testNode) ignoreSync() {
 	if memfs, ok := n.fs.(*dragonboat.MemFS); ok {
 		plog.Infof("SetIgnoreSyncs called")
 		n.nh.PartitionNode()
-		memfs.SetIgnoreSyncs(true)
+		logdb := n.nh.GetLogDB()
+		if memfsTee, ok := logdb.(tee.MemFSTee); ok {
+			plog.Infof("calling memfsTee.IgnoreSyncs(memfs)")
+			memfsTee.IgnoreSyncs(memfs)
+		} else {
+			memfs.SetIgnoreSyncs(true)
+		}
 		time.Sleep(time.Second)
 	}
 }
@@ -441,6 +450,12 @@ func (n *testNode) allowSync() {
 		plog.Infof("ResetToSyncedState called")
 		if n.nh != nil {
 			n.nh.RestorePartitionedNode()
+			logdb := n.nh.GetLogDB()
+			if memfsTee, ok := logdb.(tee.MemFSTee); ok {
+				plog.Infof("calling memfsiTee.AllowSyncs(memfs)")
+				memfsTee.AllowSyncs(memfs)
+				return
+			}
 		}
 		memfs.SetIgnoreSyncs(false)
 		memfs.ResetToSyncedState()
