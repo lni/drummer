@@ -38,7 +38,6 @@ import (
 
 	"github.com/lni/dragonboat/v3"
 	"github.com/lni/dragonboat/v3/config"
-	"github.com/lni/dragonboat/v3/plugin/tan"
 	"github.com/lni/dragonboat/v3/plugin/tee"
 	"github.com/lni/dragonboat/v3/raftpb"
 	"github.com/lni/drummer/v3/client"
@@ -337,9 +336,8 @@ func getTestConfig(ts *testSetup) (config.Config, config.NodeHostConfig) {
 		RTTMillisecond: 500,
 		NotifyCommit:   true,
 		Expert: config.ExpertConfig{
-			LogDB:        lc,
-			Engine:       ec,
-			LogDBFactory: tan.Factory,
+			LogDB:  lc,
+			Engine: ec,
 		},
 	}
 	return rc, nhc
