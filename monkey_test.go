@@ -1035,12 +1035,19 @@ func (te *testEnv) monkeyPlay() {
 					plog.Infof("monkey will stop %s %d", n.nodeType, n.index+1)
 					n.stop()
 					plog.Infof("monkey stopped %s %d", n.nodeType, n.index+1)
-					if rand.Uint64()%5 == 0 &&
+
+					// removeNodeHostDir doesn't work as it is possible to have a joined
+					// node to start, recover from a snapshot and be stopped in seconds.
+					// in such case, drummer won't be notified for such successful launch,
+					// when drummer realizes the node is offline, it won't be able to
+					// determine whether to perform a restore or a join operation.
+
+					/*if rand.Uint64()%5 == 0 &&
 						!n.isDrummerNode() && !te.deleteDataTested && te.second < 800 {
 						plog.Infof("monkey will delete all on %s %d", n.nodeType, n.index+1)
 						n.removeNodeHostDir()
 						te.deleteDataTested = true
-					}
+					}*/
 				} else {
 					plog.Infof("monkey will start %s %d", n.nodeType, n.index+1)
 					n.start(te.ts)
