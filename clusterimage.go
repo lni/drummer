@@ -63,7 +63,7 @@ type nodeToKill struct {
 }
 
 func (cr *clusterRepair) id() string {
-	return logutil.ClusterID(cr.clusterID)
+	return logutil.ShardID(cr.clusterID)
 }
 
 func (cr *clusterRepair) quorum() int {
@@ -165,7 +165,7 @@ func (n *node) waitingToBeStarted(tick uint64) bool {
 }
 
 func (c *cluster) id() string {
-	return logutil.ClusterID(c.ClusterID)
+	return logutil.ShardID(c.ClusterID)
 }
 
 func (c *cluster) quorum() int {

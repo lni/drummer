@@ -32,9 +32,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 
-	"github.com/lni/dragonboat/v3"
-	"github.com/lni/dragonboat/v3/client"
-	"github.com/lni/dragonboat/v3/logger"
+	"github.com/lni/dragonboat/v4"
+	"github.com/lni/dragonboat/v4/client"
+	"github.com/lni/dragonboat/v4/logger"
 	pb "github.com/lni/drummer/v3/drummerpb"
 	"github.com/lni/drummer/v3/settings"
 	"github.com/lni/goutils/envutil"

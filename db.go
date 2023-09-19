@@ -21,7 +21,7 @@ import (
 	"io"
 	"io/ioutil"
 
-	sm "github.com/lni/dragonboat/v3/statemachine"
+	sm "github.com/lni/dragonboat/v4/statemachine"
 	pb "github.com/lni/drummer/v3/drummerpb"
 	"github.com/lni/drummer/v3/settings"
 )
@@ -210,10 +210,10 @@ func (d *DB) GetHash() (uint64, error) {
 }
 
 // Update updates the DB instance.
-func (d *DB) Update(data []byte) (sm.Result, error) {
+func (d *DB) Update(entry sm.Entry) (sm.Result, error) {
 	d.assertNotFailed()
 	var c pb.Update
-	if err := c.Unmarshal(data); err != nil {
+	if err := c.Unmarshal(entry.Cmd); err != nil {
 		panic(err)
 	}
 	if c.Type == pb.Update_CLUSTER {

@@ -23,8 +23,8 @@ CONCURRENT_TEST_NAME := ^TestConcurrentSMMonkeyPlay$$
 ONDISK_TEST_NAME := ^TestOnDiskSMMonkeyPlay$$
 JEPSEN_FILE := drummer-lcm.jepsen
 EDN_FILE := drummer-lcm.edn
-MAIN_PKG := github.com/lni/dragonboat/v3
-COVER_PKG := $(MAIN_PKG),$(MAIN_PKG)/internal/raft,$(MAIN_PKG)/internal/rsm,$(MAIN_PKG)/internal/transport,$(MAIN_PKG)/internal/logdb,github.com/lni/dragonboat/v3/internal/logdb/kv/pebble,$(PKGNAME)
+MAIN_PKG := github.com/lni/dragonboat/v4
+COVER_PKG := $(MAIN_PKG),$(MAIN_PKG)/internal/raft,$(MAIN_PKG)/internal/rsm,$(MAIN_PKG)/internal/transport,$(MAIN_PKG)/internal/logdb,github.com/lni/dragonboat/v4/internal/logdb/kv/pebble,$(PKGNAME)
 
 BUILD_TAGS := $(MONKEY_TEST_TAG)
 

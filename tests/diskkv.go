@@ -37,9 +37,9 @@ import (
 	pvfs "github.com/cockroachdb/pebble/vfs"
 	"github.com/lni/vfs"
 
-	"github.com/lni/dragonboat/v3"
-	"github.com/lni/dragonboat/v3/config"
-	sm "github.com/lni/dragonboat/v3/statemachine"
+	"github.com/lni/dragonboat/v4"
+	"github.com/lni/dragonboat/v4/config"
+	sm "github.com/lni/dragonboat/v4/statemachine"
 	"github.com/lni/drummer/v3/kv"
 	"github.com/lni/goutils/logutil"
 	"github.com/lni/goutils/random"
@@ -146,10 +146,20 @@ func NewPebbleFS(fs config.IFS) pvfs.FS {
 	return &PebbleFS{fs}
 }
 
+func (p *PebbleFS) GetDiskUsage(path string) (pvfs.DiskUsage, error) {
+	du, err := p.fs.GetDiskUsage(path)
+	return pvfs.DiskUsage{
+		AvailBytes: du.AvailBytes,
+		TotalBytes: du.TotalBytes,
+		UsedBytes:  du.UsedBytes,
+	}, err
+}
+
+/*
 // GetFreeSpace ...
 func (p *PebbleFS) GetFreeSpace(path string) (uint64, error) {
 	return p.fs.GetFreeSpace(path)
-}
+}*/
 
 // Create ...
 func (p *PebbleFS) Create(name string) (pvfs.File, error) {

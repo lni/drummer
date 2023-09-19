@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build dragonboat_monkeytest
 // +build dragonboat_monkeytest
 
 package drummer
@@ -36,9 +37,9 @@ import (
 	"github.com/lni/goutils/random"
 	"github.com/lni/goutils/syncutil"
 
-	"github.com/lni/dragonboat/v3"
-	"github.com/lni/dragonboat/v3/config"
-	"github.com/lni/dragonboat/v3/raftpb"
+	"github.com/lni/dragonboat/v4"
+	"github.com/lni/dragonboat/v4/config"
+	"github.com/lni/dragonboat/v4/raftpb"
 	"github.com/lni/drummer/v3/client"
 	pb "github.com/lni/drummer/v3/drummerpb"
 	"github.com/lni/drummer/v3/kv"
@@ -168,11 +169,11 @@ func printEntries(clusterID uint64, nodeID uint64, entries []raftpb.Entry) {
 func logCluster(nodes []*testNode, clusterIDMap map[uint64]struct{}) {
 	for _, n := range nodes {
 		nh := n.nh
-		for _, rn := range nh.Clusters() {
-			clusterID := rn.ClusterID()
+		for _, rn := range nh.Shards() {
+			clusterID := rn.ShardID()
 			if _, ok := clusterIDMap[clusterID]; ok {
 				plog.Infof("%s rn.lastApplied %d",
-					dn(rn.ClusterID(), rn.NodeID()), rn.GetLastApplied())
+					dn(rn.ShardID(), rn.ReplicaID()), rn.GetLastApplied())
 				rn.DumpRaftInfoToLog()
 			}
 		}
@@ -524,10 +525,10 @@ func (n *testNode) compact() {
 	if n.nodeType == nodeTypeNodehost {
 		cid := rand.Uint64() % 128
 		nh := n.nh
-		for _, rn := range nh.Clusters() {
-			if rn.ClusterID() == cid {
+		for _, rn := range nh.Shards() {
+			if rn.ShardID() == cid {
 				plog.Infof("going to request a compaction for cluster %d", cid)
-				sop, err := nh.RequestCompaction(cid, rn.NodeID())
+				sop, err := nh.RequestCompaction(cid, rn.ReplicaID())
 				if err == dragonboat.ErrRejected {
 					return
 				}
@@ -590,9 +591,9 @@ func (n *testNode) startDrummerNode(ts *testSetup) {
 	for idx, v := range ts.drummerAddrs {
 		peers[uint64(idx+1)] = v
 	}
-	rc.NodeID = uint64(n.index + 1)
-	rc.ClusterID = defaultClusterID
-	if err := nh.StartCluster(peers, false, NewDB, rc); err != nil {
+	rc.ReplicaID = uint64(n.index + 1)
+	rc.ShardID = defaultClusterID
+	if err := nh.StartReplica(peers, false, NewDB, rc); err != nil {
 		panic(err)
 	}
 	addr := ts.drummerAPIAddrs[n.index]
@@ -707,10 +708,10 @@ func (te *testEnv) checkRateLimiterState(t *testing.T, last bool) bool {
 	for _, n := range te.nodehosts {
 		n.mustBeNodehost()
 		nh := n.nh
-		for _, rn := range nh.Clusters() {
+		for _, rn := range nh.Shards() {
 			rl := rn.GetRateLimiter()
-			clusterID := rn.ClusterID()
-			nodeID := rn.NodeID()
+			clusterID := rn.ShardID()
+			nodeID := rn.ReplicaID()
 			if rl.Get() != rn.GetInMemLogSize() {
 				if last {
 					t.Fatalf("%s, rl mem log size %d, in mem log size %d",
@@ -736,8 +737,8 @@ func (te *testEnv) checkNodesSynced(t *testing.T, nodes []*testNode, last bool) 
 	notSynced := make(map[uint64]struct{})
 	for _, n := range nodes {
 		nh := n.nh
-		for _, rn := range nh.Clusters() {
-			clusterID := rn.ClusterID()
+		for _, rn := range nh.Shards() {
+			clusterID := rn.ShardID()
 			lastApplied := rn.GetLastApplied()
 			existingLastApplied, ok := appliedMap[clusterID]
 			if !ok {
@@ -771,9 +772,9 @@ func (te *testEnv) logDBSynced(t *testing.T, nodes []*testNode, last bool) bool 
 	notSynced := make(map[uint64]struct{})
 	for _, n := range nodes {
 		nh := n.nh
-		for _, rn := range nh.Clusters() {
-			nodeID := rn.NodeID()
-			clusterID := rn.ClusterID()
+		for _, rn := range nh.Shards() {
+			nodeID := rn.ReplicaID()
+			clusterID := rn.ShardID()
 			lastApplied := rn.GetLastApplied()
 			logdb := nh.GetLogDB()
 			entries, _, err := logdb.IterateEntries(nil,
@@ -822,8 +823,8 @@ func (te *testEnv) checkStateMachine(t *testing.T, nodes []*testNode, last bool)
 	inconsistent := make(map[uint64]struct{})
 	for _, n := range nodes {
 		nh := n.nh
-		for _, rn := range nh.Clusters() {
-			clusterID := rn.ClusterID()
+		for _, rn := range nh.Shards() {
+			clusterID := rn.ShardID()
 			hash := rn.GetStateMachineHash()
 			sessionHash := rn.GetSessionHash()
 			membershipHash := rn.GetMembershipHash()
@@ -927,11 +928,11 @@ func (te *testEnv) checkClustersLaunched(t *testing.T, last bool) bool {
 	}
 	for _, tn := range te.nodehosts {
 		nh := tn.nh
-		for _, node := range nh.Clusters() {
-			if count, ok := clusters[node.ClusterID()]; ok {
-				clusters[node.ClusterID()] = count + 1
+		for _, node := range nh.Shards() {
+			if count, ok := clusters[node.ShardID()]; ok {
+				clusters[node.ShardID()] = count + 1
 			} else {
-				clusters[node.ClusterID()] = 1
+				clusters[node.ShardID()] = 1
 			}
 		}
 	}
@@ -973,9 +974,9 @@ func waitForStableNodes(nodes []*testNode, seconds uint64) bool {
 					continue
 				}
 				nh := node.nh
-				clusters := nh.Clusters()
+				clusters := nh.Shards()
 				for _, rn := range clusters {
-					clusterSet[rn.ClusterID()] = struct{}{}
+					clusterSet[rn.ShardID()] = struct{}{}
 					isLeader := rn.IsLeader()
 					isFollower := rn.IsFollower()
 					if !isLeader && !isFollower {
@@ -983,7 +984,7 @@ func waitForStableNodes(nodes []*testNode, seconds uint64) bool {
 					}
 
 					if isLeader {
-						leaderMap[rn.ClusterID()] = struct{}{}
+						leaderMap[rn.ShardID()] = struct{}{}
 					}
 				}
 			}
@@ -1372,7 +1373,7 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 	plog.Infof("making a test proposal on %s, cluster %d, %d bytes",
 		nh.RaftAddress(), clusterID, len(data))
 	rs, err := nh.Propose(session, data, 10*time.Second)
-	if err == dragonboat.ErrClosed || err == dragonboat.ErrClusterClosed {
+	if err == dragonboat.ErrClosed || err == dragonboat.ErrShardClosed {
 		return false
 	}
 	if err != nil {

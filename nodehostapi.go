@@ -24,9 +24,9 @@ import (
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/status"
 
-	"github.com/lni/dragonboat/v3"
-	"github.com/lni/dragonboat/v3/client"
-	sm "github.com/lni/dragonboat/v3/statemachine"
+	"github.com/lni/dragonboat/v4"
+	"github.com/lni/dragonboat/v4/client"
+	sm "github.com/lni/dragonboat/v4/statemachine"
 	pb "github.com/lni/drummer/v3/multiraftpb"
 	"github.com/lni/goutils/netutil"
 	"github.com/lni/goutils/syncutil"
@@ -95,7 +95,7 @@ func (api *NodehostAPI) supportRegularSession(clusterID uint64) (bool, error) {
 	if nhi == nil {
 		return false, errors.New("stopped")
 	}
-	for _, ci := range nhi.ClusterInfoList {
+	for _, ci := range nhi.ShardInfoList {
 		api.supportCS[clusterID] = ci.StateMachineType != sm.OnDiskStateMachine
 	}
 	v, ok = api.supportCS[clusterID]
@@ -166,10 +166,10 @@ func grpcError(err error) error {
 		code = codes.InvalidArgument
 	} else if err == dragonboat.ErrPayloadTooBig || err == dragonboat.ErrTimeoutTooSmall {
 		code = codes.InvalidArgument
-	} else if err == dragonboat.ErrSystemBusy || err == dragonboat.ErrBadKey ||
-		err == dragonboat.ErrClosed || err == dragonboat.ErrClusterClosed {
+	} else if err == dragonboat.ErrSystemBusy ||
+		err == dragonboat.ErrClosed || err == dragonboat.ErrShardClosed {
 		code = codes.Unavailable
-	} else if err == dragonboat.ErrClusterNotFound {
+	} else if err == dragonboat.ErrShardNotFound {
 		code = codes.NotFound
 	} else if err == context.Canceled || err == dragonboat.ErrCanceled {
 		code = codes.Canceled

@@ -18,8 +18,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/lni/dragonboat/v3"
-	"github.com/lni/dragonboat/v3/raftio"
+	"github.com/lni/dragonboat/v4"
+	"github.com/lni/dragonboat/v4/raftio"
 	"github.com/lni/drummer/v3/settings"
 	"github.com/lni/goutils/random"
 	"github.com/lni/goutils/syncutil"

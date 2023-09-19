@@ -22,9 +22,9 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/lni/dragonboat/v3"
-	"github.com/lni/dragonboat/v3/config"
-	"github.com/lni/dragonboat/v3/raftio"
+	"github.com/lni/dragonboat/v4"
+	"github.com/lni/dragonboat/v4/config"
+	"github.com/lni/dragonboat/v4/raftio"
 	pb "github.com/lni/drummer/v3/drummerpb"
 	"github.com/lni/drummer/v3/settings"
 	"github.com/lni/goutils/logutil"
@@ -91,7 +91,7 @@ func (dc *DrummerClient) Stop() {
 }
 
 type clusterInfo struct {
-	info       dragonboat.ClusterInfo
+	info       dragonboat.ShardInfo
 	incomplete bool
 }
 
@@ -118,22 +118,22 @@ func (dc *DrummerClient) SendNodeHostInfo(ctx context.Context,
 		nhi.RaftAddress, drummerAPIAddress, il.Indexes)
 	cil := make([]clusterInfo, 0)
 	clusterIDList := make([]uint64, 0)
-	for _, v := range nhi.ClusterInfoList {
+	for _, v := range nhi.ShardInfoList {
 		incomplete := false
-		clusterIDList = append(clusterIDList, v.ClusterID)
-		cci, ok := il.Indexes[v.ClusterID]
+		clusterIDList = append(clusterIDList, v.ShardID)
+		cci, ok := il.Indexes[v.ShardID]
 		if ok && cci >= v.ConfigChangeIndex && !v.Pending {
 			incomplete = true
-			v.Nodes = nil
+			v.Replicas = nil
 		}
 		ci := clusterInfo{info: v, incomplete: incomplete}
 		cil = append(cil, ci)
 	}
 	for _, v := range cil {
 		info := v.info
-		if !v.incomplete && !info.Pending && len(info.Nodes) > 0 {
+		if !v.incomplete && !info.Pending && len(info.Replicas) > 0 {
 			plog.Debugf("%s updating nodehost info, %d, %v",
-				nhi.RaftAddress, info.ConfigChangeIndex, info.Nodes)
+				nhi.RaftAddress, info.ConfigChangeIndex, info.Replicas)
 		}
 	}
 	if !logInfoIncluded && len(nhi.LogInfo) != 0 {
@@ -170,10 +170,10 @@ func toDrummerPBClusterInfo(cil []clusterInfo) []pb.ClusterInfo {
 		v := vv.info
 		incomplete := vv.incomplete
 		pbv := pb.ClusterInfo{
-			ClusterId:         v.ClusterID,
-			NodeId:            v.NodeID,
+			ClusterId:         v.ShardID,
+			NodeId:            v.ReplicaID,
 			IsLeader:          v.IsLeader,
-			Nodes:             v.Nodes,
+			Nodes:             v.Replicas,
 			ConfigChangeIndex: v.ConfigChangeIndex,
 			Incomplete:        incomplete,
 			Pending:           v.Pending,
@@ -187,8 +187,8 @@ func toDrummerPBLogInfo(loginfo []raftio.NodeInfo) []pb.LogInfo {
 	result := make([]pb.LogInfo, 0)
 	for _, v := range loginfo {
 		pbv := pb.LogInfo{
-			ClusterId: v.ClusterID,
-			NodeId:    v.NodeID,
+			ClusterId: v.ShardID,
+			NodeId:    v.ReplicaID,
 		}
 		result = append(result, pbv)
 	}
@@ -275,7 +275,7 @@ func (dc *DrummerClient) handleKillRequest(req pb.NodeHostRequest) {
 	clusterID := req.Change.ClusterId
 	plog.Debugf("kill request handled on %s for %s",
 		dc.nh.RaftAddress(), logutil.DescribeNode(clusterID, nodeID))
-	if err := dc.nh.StopNode(clusterID, nodeID); err != nil {
+	if err := dc.nh.StopReplica(clusterID, nodeID); err != nil {
 		plog.Errorf("removeClusterNode for %s failed, %v",
 			logutil.DescribeNode(clusterID, nodeID), err)
 	} else {
@@ -286,7 +286,7 @@ func (dc *DrummerClient) handleKillRequest(req pb.NodeHostRequest) {
 			if err != nil {
 				plog.Errorf("remove data failed %s, %v",
 					logutil.DescribeNode(clusterID, nodeID), err)
-				if err == dragonboat.ErrClusterNotStopped {
+				if err == dragonboat.ErrShardNotStopped {
 					time.Sleep(100 * time.Millisecond)
 				} else {
 					panic(err)
@@ -308,19 +308,19 @@ func (dc *DrummerClient) handleAddDeleteRequest(ctx context.Context,
 		plog.Infof("delete request handled on %s for %s, conf change id %d",
 			dc.nh.RaftAddress(), logutil.DescribeNode(clusterID, nodeID),
 			req.Change.ConfChangeId)
-		rs, err = dc.nh.RequestDeleteNode(clusterID, nodeID,
+		rs, err = dc.nh.RequestDeleteReplica(clusterID, nodeID,
 			req.Change.ConfChangeId, localTimeoutMs)
 	} else if req.Change.Type == pb.Request_ADD {
 		plog.Infof("add request handled on %s for %s, conf change id %d",
 			dc.nh.RaftAddress(), logutil.DescribeNode(clusterID, nodeID),
 			req.Change.ConfChangeId)
 		url := req.AddressList[0]
-		rs, err = dc.nh.RequestAddNode(clusterID, nodeID, url,
+		rs, err = dc.nh.RequestAddReplica(clusterID, nodeID, url,
 			req.Change.ConfChangeId, localTimeoutMs)
 	} else {
 		plog.Panicf("unknown request type %s", req.Change.Type)
 	}
-	if err == dragonboat.ErrClusterNotFound ||
+	if err == dragonboat.ErrShardNotFound ||
 		dragonboat.IsTempError(err) ||
 		isGRPCTempError(err) {
 		return
@@ -346,7 +346,7 @@ func (dc *DrummerClient) handleAddDeleteRequest(ctx context.Context,
 				if err != nil {
 					plog.Errorf("remove deleted node's data failed %s, %v",
 						logutil.DescribeNode(clusterID, nodeID), err)
-					if err == dragonboat.ErrClusterNotStopped {
+					if err == dragonboat.ErrShardNotStopped {
 						time.Sleep(100 * time.Millisecond)
 					} else {
 						panic(err)
@@ -404,7 +404,7 @@ func (dc *DrummerClient) handleInstantiateRequest(req pb.NodeHostRequest) {
 		}
 		for k, v := range req.AddressList {
 			plog.Debugf("remote node info - id:%s, address:%s",
-				logutil.NodeID(req.NodeIdList[k]), v)
+				logutil.ReplicaID(req.NodeIdList[k]), v)
 			peers[req.NodeIdList[k]] = v
 		}
 	} else {
@@ -414,8 +414,8 @@ func (dc *DrummerClient) handleInstantiateRequest(req pb.NodeHostRequest) {
 		requestType, dc.nh.RaftAddress(),
 		logutil.DescribeNode(clusterID, nodeID))
 	config := getConfig(req)
-	config.NodeID = nodeID
-	config.ClusterID = req.Change.ClusterId
+	config.ReplicaID = nodeID
+	config.ShardID = req.Change.ClusterId
 	config.OrderedConfigChange = true
 	pd, ok := dc.mu.smFactory[req.AppName]
 	if !ok {
@@ -424,13 +424,13 @@ func (dc *DrummerClient) handleInstantiateRequest(req pb.NodeHostRequest) {
 	}
 	var err error
 	if pd.isRegularStateMachine() {
-		err = dc.nh.StartCluster(peers,
+		err = dc.nh.StartReplica(peers,
 			req.Join, pd.createNativeStateMachine, config)
 	} else if pd.isConcurrentStateMachine() {
-		err = dc.nh.StartConcurrentCluster(peers,
+		err = dc.nh.StartConcurrentReplica(peers,
 			req.Join, pd.createConcurrentStateMachine, config)
 	} else if pd.isOnDiskStateMachine() {
-		err = dc.nh.StartOnDiskCluster(peers,
+		err = dc.nh.StartOnDiskReplica(peers,
 			req.Join, pd.createOnDiskStateMachine, config)
 	} else {
 		panic("unknown type")

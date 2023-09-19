@@ -12,12 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build dragonboat_monkeytest
 // +build dragonboat_monkeytest
 
 package client
 
 import (
-	"github.com/lni/dragonboat/v3"
+	"github.com/lni/dragonboat/v4"
 )
 
 func IsNodeHostPartitioned(nh *dragonboat.NodeHost) bool {

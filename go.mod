@@ -1,14 +1,16 @@
 module github.com/lni/drummer/v3
 
 require (
-	github.com/cockroachdb/errors v1.8.2
-	github.com/cockroachdb/pebble v0.0.0-20210406181039-e3809b89b488
-	github.com/gogo/protobuf v1.3.1
-	github.com/lni/dragonboat/v3 v3.1.1-0.20210426073759-ddcc04e7b5bc
-	github.com/lni/goutils v1.3.1-0.20210207055804-2f3468487e42
-	github.com/lni/vfs v0.2.1-0.20210315104505-1aae3589f953
-	golang.org/x/net v0.0.0-20200625001655-4c5254603344
-	google.golang.org/grpc v1.29.1
+	github.com/cockroachdb/errors v1.9.0
+	github.com/cockroachdb/pebble v0.0.0-20221207173255-0f086d933dac
+	github.com/gogo/protobuf v1.3.2
+	github.com/lni/dragonboat/v4 v4.0.0-20230917160253-d9f49378cd2d
+	github.com/lni/goutils v1.3.1-0.20220604063047-388d67b4dbc4
+	github.com/lni/vfs v0.2.1-0.20220616104132-8852fd867376
+	golang.org/x/net v0.15.0
+	google.golang.org/grpc v1.38.0
 )
+
+replace github.com/lni/dragonboat/v3 => /Users/lni/src/dragonboat
 
 go 1.14

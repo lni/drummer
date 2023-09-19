@@ -34,7 +34,7 @@ import (
 	"sync"
 	"time"
 
-	sm "github.com/lni/dragonboat/v3/statemachine"
+	sm "github.com/lni/dragonboat/v4/statemachine"
 	"github.com/lni/drummer/v3/kv"
 	"github.com/lni/goutils/random"
 )
@@ -142,7 +142,7 @@ func (s *KVTest) Lookup(key interface{}) (interface{}, error) {
 }
 
 // Update updates the object using the specified committed raft entry.
-func (s *KVTest) Update(data []byte) (sm.Result, error) {
+func (s *KVTest) Update(entry sm.Entry) (sm.Result, error) {
 	s.Count++
 	if s.aborted {
 		panic("update() called after abort set to true")
@@ -152,12 +152,12 @@ func (s *KVTest) Update(data []byte) (sm.Result, error) {
 	}
 	generateRandomDelay()
 	dataKv := s.pbkvPool.Get().(*kv.KV)
-	if err := dataKv.UnmarshalBinary(data); err != nil {
+	if err := dataKv.UnmarshalBinary(entry.Cmd); err != nil {
 		panic(err)
 	}
 	s.updateStore(dataKv.Key, dataKv.Val)
 	s.pbkvPool.Put(dataKv)
-	return sm.Result{Value: uint64(len(data))}, nil
+	return sm.Result{Value: uint64(len(entry.Cmd))}, nil
 }
 
 func (s *KVTest) saveExternalFile(fileCollection sm.ISnapshotFileCollection) {

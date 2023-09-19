@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !dragonboat_monkeytest
 // +build !dragonboat_monkeytest
 
 package drummer
@@ -88,9 +89,7 @@ func getTestMultiNodeHost(nhList []pb.NodeHostInfo) *multiNodeHost {
 	return mnh
 }
 
-//
 // without any running cluster
-//
 func getNodeHostInfoListWithoutAnyCluster() []pb.NodeHostInfo {
 	nhi := []testNodeInfo{
 		{"a1", 100, "region-1", false, 0, 0, nil, nil},

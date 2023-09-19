@@ -21,9 +21,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lni/dragonboat/v3"
-	"github.com/lni/dragonboat/v3/client"
-	sm "github.com/lni/dragonboat/v3/statemachine"
+	"github.com/lni/dragonboat/v4"
+	"github.com/lni/dragonboat/v4/client"
+	sm "github.com/lni/dragonboat/v4/statemachine"
 	pb "github.com/lni/drummer/v3/drummerpb"
 	"github.com/lni/drummer/v3/settings"
 	"github.com/lni/goutils/random"
@@ -58,7 +58,7 @@ func (s *server) AddDrummerServer(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	rs, err := s.nh.RequestAddNode(defaultClusterID,
+	rs, err := s.nh.RequestAddReplica(defaultClusterID,
 		req.NodeId, req.Address, 0, timeout)
 	if err != nil {
 		return nil, err
@@ -72,7 +72,7 @@ func (s *server) RemoveDrummerServer(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	rs, err := s.nh.RequestDeleteNode(defaultClusterID, req.NodeId, 0, timeout)
+	rs, err := s.nh.RequestDeleteReplica(defaultClusterID, req.NodeId, 0, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -213,7 +213,7 @@ func (s *server) GetClusterStates(ctx context.Context,
 		return nil, err
 	}
 	if len(respData.([]byte)) == 0 {
-		return nil, dragonboat.ErrClusterNotFound
+		return nil, dragonboat.ErrShardNotFound
 	}
 	c := &pb.ClusterStates{}
 	if err := c.Unmarshal(respData.([]byte)); err != nil {
@@ -231,9 +231,9 @@ func waitDrummerRequestResult(ctx context.Context,
 		} else if r.Timeout() {
 			return nil, dragonboat.ErrTimeout
 		} else if r.Terminated() {
-			return nil, dragonboat.ErrClusterClosed
+			return nil, dragonboat.ErrShardClosed
 		} else if r.Dropped() {
-			return nil, dragonboat.ErrClusterNotReady
+			return nil, dragonboat.ErrShardNotReady
 		}
 		plog.Panicf("unknown v code")
 	case <-ctx.Done():
@@ -250,7 +250,7 @@ func toClusterState(mc *multiCluster, mnh *multiNodeHost,
 	tick uint64, clusterID uint64) (*pb.ClusterState, error) {
 	c := mc.getClusterInfo(clusterID)
 	if c == nil {
-		return nil, dragonboat.ErrClusterNotFound
+		return nil, dragonboat.ErrShardNotFound
 	}
 	nodes := make(map[uint64]string)
 	rpcAddresses := make(map[uint64]string)
@@ -483,7 +483,7 @@ func (s *server) lookupDB(ctx context.Context,
 
 func (s *server) proposeDrummerUpdate(ctx context.Context,
 	session *client.Session, u pb.Update) (sm.Result, error) {
-	session.ClusterIDMustMatch(defaultClusterID)
+	session.ShardIDMustMatch(defaultClusterID)
 	timeout := time.Duration(raftOpTimeoutMillisecond) * time.Millisecond
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
@@ -497,7 +497,7 @@ func (s *server) proposeDrummerUpdate(ctx context.Context,
 func (s *server) proposeFinalizedKV(ctx context.Context,
 	session *client.Session, key string, value string,
 	instanceID uint64) (uint64, error) {
-	session.ClusterIDMustMatch(defaultClusterID)
+	session.ShardIDMustMatch(defaultClusterID)
 	kv := pb.KV{
 		Key:        key,
 		Value:      value,

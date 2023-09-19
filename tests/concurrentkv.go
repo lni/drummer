@@ -27,7 +27,7 @@ import (
 	"time"
 	"unsafe"
 
-	sm "github.com/lni/dragonboat/v3/statemachine"
+	sm "github.com/lni/dragonboat/v4/statemachine"
 	"github.com/lni/drummer/v3/kv"
 )
 

@@ -20,7 +20,7 @@ import (
 	"io/ioutil"
 	"time"
 
-	sm "github.com/lni/dragonboat/v3/statemachine"
+	sm "github.com/lni/dragonboat/v4/statemachine"
 )
 
 // NoOP is a IStateMachine struct used for testing purpose.

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !dragonboat_monkeytest
 // +build !dragonboat_monkeytest
 
 package drummer
@@ -23,7 +24,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/lni/dragonboat/v3/statemachine"
+	"github.com/lni/dragonboat/v4/statemachine"
 	pb "github.com/lni/drummer/v3/drummerpb"
 )
 
@@ -90,15 +91,20 @@ func testTickCanBeIncreased(t *testing.T, db statemachine.IStateMachine) {
 	if err != nil {
 		panic(err)
 	}
-	v1, err := db.Update(data)
+
+	entry := statemachine.Entry{
+		Cmd: data,
+	}
+
+	v1, err := db.Update(entry)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	v2, err := db.Update(data)
+	v2, err := db.Update(entry)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
-	v3, err := db.Update(data)
+	v3, err := db.Update(entry)
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -110,7 +116,7 @@ func testTickCanBeIncreased(t *testing.T, db statemachine.IStateMachine) {
 	if db.(*DB).Tick != 3*tickIntervalSecond {
 		t.Errorf("unexpected tick value")
 	}
-	v4, _ := db.Update(data)
+	v4, _ := db.Update(statemachine.Entry{Cmd: data})
 	if v4.Value != 4*tickIntervalSecond || db.(*DB).Tick != 4*tickIntervalSecond {
 		t.Errorf("unexpected tick value")
 	}
@@ -154,13 +160,13 @@ func testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t *testing.T,
 	if err != nil {
 		panic(err)
 	}
-	if _, err := db.Update(tickData); err != nil {
+	if _, err := db.Update(statemachine.Entry{Cmd: tickData}); err != nil {
 		t.Fatalf("%v", err)
 	}
-	if _, err := db.Update(tickData); err != nil {
+	if _, err := db.Update(statemachine.Entry{Cmd: tickData}); err != nil {
 		t.Fatalf("%v", err)
 	}
-	if _, err := db.Update(data); err != nil {
+	if _, err := db.Update(statemachine.Entry{Cmd: data}); err != nil {
 		t.Fatalf("%v", err)
 	}
 	clusterInfo := db.(*DB).ClusterImage
@@ -253,25 +259,25 @@ func TestTickUpdatedAsExpected(t *testing.T) {
 		panic(err)
 	}
 	for i := uint64(0); i < 10; i++ {
-		if _, err := db.Update(tickData); err != nil {
+		if _, err := db.Update(statemachine.Entry{Cmd: tickData}); err != nil {
 			t.Fatalf("%v", err)
 		}
-		if _, err := db.Update(nhiData); err != nil {
+		if _, err := db.Update(statemachine.Entry{Cmd: nhiData}); err != nil {
 			t.Fatalf("%v", err)
 		}
 		testTickValue(t, db, "a2", 1, 2, i+1)
 	}
 	for i := uint64(0); i < 10; i++ {
-		if _, err := db.Update(nhiData); err != nil {
+		if _, err := db.Update(statemachine.Entry{Cmd: nhiData}); err != nil {
 			t.Fatalf("%v", err)
 		}
 		testTickValue(t, db, "a2", 1, 2, 10)
 	}
 	for i := uint64(0); i < 10; i++ {
-		if _, err := db.Update(tickData); err != nil {
+		if _, err := db.Update(statemachine.Entry{Cmd: tickData}); err != nil {
 			t.Fatalf("%v", err)
 		}
-		if _, err := db.Update(nhiData); err != nil {
+		if _, err := db.Update(statemachine.Entry{Cmd: nhiData}); err != nil {
 			t.Fatalf("%v", err)
 		}
 		testTickValue(t, db, "a2", 1, 2, 11+i)
@@ -333,7 +339,7 @@ func testRequestsCanBeUpdated(t *testing.T, db statemachine.IStateMachine) {
 	if err != nil {
 		panic(err)
 	}
-	v, _ := db.Update(data)
+	v, _ := db.Update(statemachine.Entry{Cmd: data})
 	if v.Value != 3 {
 		t.Errorf("unexpected returned value")
 	}
@@ -491,12 +497,12 @@ func TestClusterCanBeUpdatedAndLookedUp(t *testing.T) {
 	}
 	oldData := data
 	d := NewDB(0, 0)
-	code, _ := d.Update(data)
+	code, _ := d.Update(statemachine.Entry{Cmd: data})
 	if code.Value != DBUpdated {
 		t.Errorf("code %d, want %d", code, DBUpdated)
 	}
 	// use the same input to update the drummer db again
-	code, _ = d.Update(data)
+	code, _ = d.Update(statemachine.Entry{Cmd: data})
 	if code.Value != ClusterExists {
 		t.Errorf("code %d, want %d", code, ClusterExists)
 	}
@@ -514,13 +520,13 @@ func TestClusterCanBeUpdatedAndLookedUp(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
-	if _, err := d.Update(data); err != nil {
+	if _, err := d.Update(statemachine.Entry{Cmd: data}); err != nil {
 		t.Fatalf("%v", err)
 	}
 	if !d.(*DB).bootstrapped() {
 		t.Errorf("not bootstrapped")
 	}
-	code, _ = d.Update(oldData)
+	code, _ = d.Update(statemachine.Entry{Cmd: oldData})
 	if code.Value != DBBootstrapped {
 		t.Errorf("code %d, want %d", code, DBBootstrapped)
 	}
@@ -582,7 +588,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 		t.Fatalf("failed to marshal")
 	}
 	d := NewDB(0, 0)
-	code, err := d.Update(data)
+	code, err := d.Update(statemachine.Entry{Cmd: data})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -590,7 +596,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 		t.Errorf("code %d, want %d", code, DBKVUpdated)
 	}
 	// apply the same update again, suppose to be rejected
-	code, err = d.Update(data)
+	code, err = d.Update(statemachine.Entry{Cmd: data})
 	if err != nil {
 		t.Fatalf("%v", err)
 	}
@@ -618,7 +624,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
-	if _, err := d.Update(data); err != nil {
+	if _, err := d.Update(statemachine.Entry{Cmd: data}); err != nil {
 		t.Fatalf("%v", err)
 	}
 	v, ok = d.(*DB).KVMap["test-key"]
@@ -649,7 +655,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 		t.Fatalf("failed to marshal")
 	}
 	d := NewDB(0, 0)
-	if _, err := d.Update(data); err != nil {
+	if _, err := d.Update(statemachine.Entry{Cmd: data}); err != nil {
 		t.Fatalf("%v", err)
 	}
 	if len(d.(*DB).KVMap) != 1 {
@@ -666,7 +672,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
-	if _, err := d.Update(data); err != nil {
+	if _, err := d.Update(statemachine.Entry{Cmd: data}); err != nil {
 		t.Fatalf("%v", err)
 	}
 	v, ok := d.(*DB).KVMap["test-key"]
@@ -687,7 +693,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
-	if _, err := d.Update(data); err != nil {
+	if _, err := d.Update(statemachine.Entry{Cmd: data}); err != nil {
 		t.Fatalf("%v", err)
 	}
 	v, ok = d.(*DB).KVMap["test-key"]
@@ -710,7 +716,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
-	if _, err := d.Update(data); err != nil {
+	if _, err := d.Update(statemachine.Entry{Cmd: data}); err != nil {
 		t.Fatalf("%v", err)
 	}
 	v, ok = d.(*DB).KVMap["test-key"]
@@ -733,7 +739,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
-	if _, err := d.Update(data); err != nil {
+	if _, err := d.Update(statemachine.Entry{Cmd: data}); err != nil {
 		t.Fatalf("%v", err)
 	}
 	v, ok = d.(*DB).KVMap["test-key"]
@@ -759,7 +765,7 @@ func TestDBCanBeMarkedAsFailed(t *testing.T) {
 	db := NewDB(0, 1)
 	db.(*DB).Failed = true
 	defer expectPanic(t)
-	if _, err := db.Update(nil); err != nil {
+	if _, err := db.Update(statemachine.Entry{}); err != nil {
 		t.Fatalf("%v", err)
 	}
 }
@@ -800,7 +806,7 @@ func TestLaunchRequestSetsTheLaunchFlag(t *testing.T) {
 	if db.(*DB).launched() {
 		t.Fatalf("launched flag already unexpectedly set")
 	}
-	v, _ := db.Update(data)
+	v, _ := db.Update(statemachine.Entry{Cmd: data})
 	if v.Value != 1 {
 		t.Errorf("unexpected returned value")
 	}
@@ -855,7 +861,7 @@ func TestLaunchDeadlineIsClearedOnceAllNodesAreLaunched(t *testing.T) {
 		panic(err)
 	}
 	db.(*DB).applyTickUpdate()
-	if _, err := db.Update(data1); err != nil {
+	if _, err := db.Update(statemachine.Entry{Cmd: data1}); err != nil {
 		t.Fatalf("%v", err)
 	}
 	m := db.(*DB).getLaunchedClusters()
@@ -865,7 +871,7 @@ func TestLaunchDeadlineIsClearedOnceAllNodesAreLaunched(t *testing.T) {
 	if db.(*DB).LaunchDeadline != 100 {
 		t.Errorf("deadline is not cleared")
 	}
-	if _, err := db.Update(data2); err != nil {
+	if _, err := db.Update(statemachine.Entry{Cmd: data2}); err != nil {
 		t.Fatalf("%v", err)
 	}
 	m = db.(*DB).getLaunchedClusters()

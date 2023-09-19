@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build dragonboat_monkeytest
 // +build dragonboat_monkeytest
 
 package drummer
@@ -22,8 +23,8 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/lni/dragonboat/v3"
-	"github.com/lni/dragonboat/v3/logger"
+	"github.com/lni/dragonboat/v4"
+	"github.com/lni/dragonboat/v4/logger"
 	"github.com/lni/goutils/leaktest"
 )
 
