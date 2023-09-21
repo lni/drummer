@@ -119,11 +119,11 @@ func (p *process) recordReadCompleted(value uint64) {
 	p.recorder.recordReadCompleted(p.id, value)
 }
 
-func (p *process) StartWrite(addr string, clusterID uint64, value uint64) {
+func (p *process) StartWrite(addr string, shardID uint64, value uint64) {
 	p.setBusy()
 	go func() {
 		defer p.setIdle()
-		err := p.write(addr, clusterID, value)
+		err := p.write(addr, shardID, value)
 		if err != nil {
 			p.setStopped()
 			p.recordWriteFailed()
@@ -133,11 +133,11 @@ func (p *process) StartWrite(addr string, clusterID uint64, value uint64) {
 	}()
 }
 
-func (p *process) StartRead(addr string, clusterID uint64) {
+func (p *process) StartRead(addr string, shardID uint64) {
 	p.setBusy()
 	go func() {
 		defer p.setIdle()
-		value, err := p.read(addr, clusterID)
+		value, err := p.read(addr, shardID)
 		if err != nil {
 			p.setStopped()
 			p.recordReadFailed()
@@ -147,7 +147,7 @@ func (p *process) StartRead(addr string, clusterID uint64) {
 	}()
 }
 
-func (p *process) write(addr string, clusterID uint64, value uint64) error {
+func (p *process) write(addr string, shardID uint64, value uint64) error {
 	ctx, cancel := context.WithTimeout(p.ctx, timeout)
 	defer cancel()
 	writeConn, err := p.pool.GetInsecureConnection(ctx, addr)
@@ -155,7 +155,7 @@ func (p *process) write(addr string, clusterID uint64, value uint64) error {
 		return err
 	}
 	writeClient := mr.NewNodehostAPIClient(writeConn.ClientConn())
-	req := &mr.SessionRequest{ClusterId: clusterID}
+	req := &mr.SessionRequest{ShardId: shardID}
 	cs, err := writeClient.GetSession(ctx, req)
 	if err != nil {
 		writeConn.Close()
@@ -171,7 +171,7 @@ func (p *process) write(addr string, clusterID uint64, value uint64) error {
 		panic(err)
 	}
 	raftProposal := &mr.RaftProposal{
-		Session: *cs,
+		Session: cs,
 		Data:    data,
 	}
 	ctx, cancel = context.WithTimeout(p.ctx, timeout)
@@ -185,7 +185,7 @@ func (p *process) write(addr string, clusterID uint64, value uint64) error {
 	return nil
 }
 
-func (p *process) read(addr string, clusterID uint64) (uint64, error) {
+func (p *process) read(addr string, shardID uint64) (uint64, error) {
 	ctx, cancel := context.WithTimeout(p.ctx, timeout)
 	defer cancel()
 	readConn, err := p.pool.GetInsecureConnection(ctx, addr)
@@ -194,8 +194,8 @@ func (p *process) read(addr string, clusterID uint64) (uint64, error) {
 	}
 	readClient := mr.NewNodehostAPIClient(readConn.ClientConn())
 	ri := &mr.RaftReadIndex{
-		ClusterId: clusterID,
-		Data:      []byte(lcmKey),
+		ShardId: shardID,
+		Data:    []byte(lcmKey),
 	}
 	ctx, cancel = context.WithTimeout(p.ctx, timeout)
 	defer cancel()

@@ -181,8 +181,8 @@ func (d *electionManager) renewLeadership(ctx context.Context,
 	// leader is still the leader, renew tick on drummerdb so followers can
 	// observe that the leader is still around.
 	renewalKV := pb.KV{
-		Key:        electionKey,
-		Value:      electionKey,
+		Key:        []byte(electionKey),
+		Value:      []byte(electionKey),
 		InstanceId: d.instanceID,
 		Tick:       tick,
 		Finalized:  false,
@@ -249,8 +249,8 @@ func (d *electionManager) campaign(ctx context.Context, tick uint64) {
 		oldInstanceID = d.currentLeader.instanceID
 	}
 	renewalKV := pb.KV{
-		Key:           electionKey,
-		Value:         electionKey,
+		Key:           []byte(electionKey),
+		Value:         []byte(electionKey),
 		InstanceId:    d.instanceID,
 		OldInstanceId: oldInstanceID,
 		Tick:          tick,

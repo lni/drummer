@@ -419,7 +419,7 @@ func TestSchedulerContextLookup(t *testing.T) {
 		panic(err)
 	}
 	var kv pb.KV
-	kv.Value = string(regionData)
+	kv.Value = regionData
 	rd, err := proto.Marshal(&kv)
 	if err != nil {
 		panic(err)
@@ -513,8 +513,8 @@ func TestShardCanBeUpdatedAndLookedUp(t *testing.T) {
 	}
 	// set the bootstrapped flag
 	bkv := &pb.KV{
-		Key:       bootstrappedKey,
-		Value:     "bootstrapped",
+		Key:       []byte(bootstrappedKey),
+		Value:     []byte("bootstrapped"),
 		Finalized: true,
 	}
 	du = pb.Update{
@@ -580,8 +580,8 @@ func TestShardCanBeUpdatedAndLookedUp(t *testing.T) {
 
 func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 	kv := &pb.KV{
-		Key:       "test-key",
-		Value:     "test-data",
+		Key:       []byte("test-key"),
+		Value:     []byte("test-data"),
 		Finalized: true,
 	}
 	du := pb.Update{
@@ -620,11 +620,11 @@ func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
-	if kvrec.Value != "test-data" {
+	if string(kvrec.Value) != "test-data" {
 		t.Errorf("value %s, want test-data", kvrec.Value)
 	}
 	// try to update the finalized value
-	du.KvUpdate.Value = "test-data-2"
+	du.KvUpdate.Value = []byte("test-data-2")
 	data, err = proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
@@ -640,15 +640,15 @@ func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
-	if kvrec.Value != "test-data" {
+	if string(kvrec.Value) != "test-data" {
 		t.Errorf("value %s, want test-data", kvrec.Value)
 	}
 }
 
 func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	kv := &pb.KV{
-		Key:        "test-key",
-		Value:      "test-data",
+		Key:        []byte("test-key"),
+		Value:      []byte("test-data"),
 		InstanceId: 1000,
 	}
 	du := pb.Update{
@@ -671,7 +671,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 		t.Errorf("kv map value not expected")
 	}
 	// with a different instance id, the value can not be updated
-	du.KvUpdate.Value = "test-data-2"
+	du.KvUpdate.Value = []byte("test-data-2")
 	du.KvUpdate.InstanceId = 2000
 	data, err = proto.Marshal(&du)
 	if err != nil {
@@ -689,7 +689,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
-	if kvrec.Value != "test-data" {
+	if string(kvrec.Value) != "test-data" {
 		t.Errorf("value %s, want test-data", kvrec.Value)
 	}
 	// with the same instance id, the value should be updated
@@ -709,14 +709,14 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
-	if kvrec.Value != "test-data-2" {
+	if string(kvrec.Value) != "test-data-2" {
 		t.Errorf("value %s, want test-data", kvrec.Value)
 	}
 	// with old instance id value not matching the instance id, value
 	// should not be updated
 	du.KvUpdate.OldInstanceId = 3000
 	du.KvUpdate.InstanceId = 0
-	du.KvUpdate.Value = "test-data-3"
+	du.KvUpdate.Value = []byte("test-data-3")
 	data, err = proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
@@ -732,14 +732,14 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
-	if kvrec.Value != "test-data-2" {
-		t.Errorf("value %s, want test-data", kvrec.Value)
+	if string(kvrec.Value) != "test-data-2" {
+		t.Errorf("value %s, want test-data", string(kvrec.Value))
 	}
 	// with old instance id value matching the instance id, value should
 	// be updated
 	du.KvUpdate.OldInstanceId = 1000
 	du.KvUpdate.InstanceId = 0
-	du.KvUpdate.Value = "test-data-3"
+	du.KvUpdate.Value = []byte("test-data-3")
 	data, err = proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
@@ -755,7 +755,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
-	if kvrec.Value != "test-data-3" {
+	if string(kvrec.Value) != "test-data-3" {
 		t.Errorf("value %s, want test-data", kvrec.Value)
 	}
 }

@@ -158,20 +158,20 @@ func lessSnapshotTest() bool {
 	return cfg.SnapshotEntries > 30
 }
 
-func printEntries(clusterID uint64, nodeID uint64, entries []raftpb.Entry) {
+func printEntries(shardID uint64, nodeID uint64, entries []raftpb.Entry) {
 	for _, ent := range entries {
 		plog.Infof("%s, idx %d, term %d, type %s, entry len %d, hash %d",
-			dn(clusterID, nodeID), ent.Index, ent.Term, ent.Type,
+			dn(shardID, nodeID), ent.Index, ent.Term, ent.Type,
 			len(ent.Cmd), getEntryHash(ent))
 	}
 }
 
-func logCluster(nodes []*testNode, clusterIDMap map[uint64]struct{}) {
+func logShard(nodes []*testNode, shardIDMap map[uint64]struct{}) {
 	for _, n := range nodes {
 		nh := n.nh
 		for _, rn := range nh.Shards() {
-			clusterID := rn.ShardID()
-			if _, ok := clusterIDMap[clusterID]; ok {
+			shardID := rn.ShardID()
+			if _, ok := shardIDMap[shardID]; ok {
 				plog.Infof("%s rn.lastApplied %d",
 					dn(rn.ShardID(), rn.ReplicaID()), rn.GetLastApplied())
 				rn.DumpRaftInfoToLog()
@@ -180,20 +180,20 @@ func logCluster(nodes []*testNode, clusterIDMap map[uint64]struct{}) {
 	}
 }
 
-func logClusterToRepair(cl []clusterRepair, tick uint64) {
-	plog.Infof("cluster to repair info, tick %d", tick)
+func logShardToRepair(cl []shardRepair, tick uint64) {
+	plog.Infof("shard to repair info, tick %d", tick)
 	for _, c := range cl {
-		plog.Infof("cluster id %d, cfg chg idx %d, failed %v, ok %v, to start %v",
-			c.clusterID, c.cluster.ConfigChangeIndex,
-			c.failedNodes, c.okNodes, c.nodesToStart)
+		plog.Infof("shard id %d, cfg chg idx %d, failed %v, ok %v, to start %v",
+			c.shardID, c.shard.ConfigChangeIndex,
+			c.failedReplicas, c.okReplicas, c.replicasToStart)
 	}
 }
 
-func logUnavailableCluster(cl []cluster, tick uint64) {
-	plog.Infof("unavailable cluster info, tick %d", tick)
+func logUnavailableShard(cl []shard, tick uint64) {
+	plog.Infof("unavailable shard info, tick %d", tick)
 	for _, c := range cl {
-		plog.Infof("cluster id %d, config change idx %d, nodes %v",
-			c.ClusterID, c.ConfigChangeIndex, c.Nodes)
+		plog.Infof("shard id %d, config change idx %d, nodes %v",
+			c.ShardID, c.ConfigChangeIndex, c.Replicas)
 	}
 }
 
@@ -203,14 +203,14 @@ func disableRandomDelay() {
 	}
 }
 
-func disableClusterRandomDelay(clusterID uint64) {
-	pcs := fmt.Sprintf("IOEI-%d", clusterID)
+func disableShardRandomDelay(shardID uint64) {
+	pcs := fmt.Sprintf("IOEI-%d", shardID)
 	if err := os.Setenv(pcs, "disabled"); err != nil {
 		panic(err)
 	}
 }
 
-func getRandomClusterID(size uint64) uint64 {
+func getRandomShardID(size uint64) uint64 {
 	return (rand.Uint64() % size) + 1
 }
 
@@ -218,7 +218,7 @@ type testSetup struct {
 	snapshotWorkerCount       uint64
 	applyWorkerCount          uint64
 	monkeyTestSecondToRun     uint64
-	numOfClusters             uint64
+	numOfShards               uint64
 	numOfTestDrummerNodes     uint64
 	numOfTestNodeHostNodes    uint64
 	LCMWorkerCount            uint64
@@ -256,7 +256,7 @@ func newTestSetup(to *testOption) *testSetup {
 		snapshotWorkerCount:       to.snapshotWorkerCount,
 		applyWorkerCount:          to.workerCount,
 		monkeyTestSecondToRun:     1200,
-		numOfClusters:             128,
+		numOfShards:               128,
 		numOfTestDrummerNodes:     3,
 		numOfTestNodeHostNodes:    5,
 		LCMWorkerCount:            32,
@@ -527,7 +527,7 @@ func (n *testNode) compact() {
 		nh := n.nh
 		for _, rn := range nh.Shards() {
 			if rn.ShardID() == cid {
-				plog.Infof("going to request a compaction for cluster %d", cid)
+				plog.Infof("going to request a compaction for shard %d", cid)
 				sop, err := nh.RequestCompaction(cid, rn.ReplicaID())
 				if err == dragonboat.ErrRejected {
 					return
@@ -536,28 +536,28 @@ func (n *testNode) compact() {
 					plog.Panicf("failed to request compaction %v", err)
 				}
 				<-sop.CompletedC()
-				plog.Infof("cluster %d compaction completed", cid)
+				plog.Infof("shard %d compaction completed", cid)
 			}
 		}
 	}
 }
 
-func (n *testNode) getClustersAndTick() (*multiCluster, uint64, error) {
+func (n *testNode) getShardsAndTick() (*multiShard, uint64, error) {
 	n.mustBeDrummer()
 	sc, err := n.drummer.getSchedulerContext()
 	if err != nil {
 		return nil, 0, err
 	}
-	return sc.ClusterImage, sc.Tick, nil
+	return sc.ShardImage, sc.Tick, nil
 }
 
-func (n *testNode) getClusters() (*multiCluster, error) {
+func (n *testNode) getShards() (*multiShard, error) {
 	n.mustBeDrummer()
 	sc, err := n.drummer.getSchedulerContext()
 	if err != nil {
 		return nil, err
 	}
-	return sc.ClusterImage, nil
+	return sc.ShardImage, nil
 }
 
 func (n *testNode) setNodeNext(low uint64, high uint64) {
@@ -592,7 +592,7 @@ func (n *testNode) startDrummerNode(ts *testSetup) {
 		peers[uint64(idx+1)] = v
 	}
 	rc.ReplicaID = uint64(n.index + 1)
-	rc.ShardID = defaultClusterID
+	rc.ShardID = defaultShardID
 	if err := nh.StartReplica(peers, false, NewDB, rc); err != nil {
 		panic(err)
 	}
@@ -710,12 +710,12 @@ func (te *testEnv) checkRateLimiterState(t *testing.T, last bool) bool {
 		nh := n.nh
 		for _, rn := range nh.Shards() {
 			rl := rn.GetRateLimiter()
-			clusterID := rn.ShardID()
+			shardID := rn.ShardID()
 			nodeID := rn.ReplicaID()
 			if rl.Get() != rn.GetInMemLogSize() {
 				if last {
 					t.Fatalf("%s, rl mem log size %d, in mem log size %d",
-						dn(clusterID, nodeID), rl.Get(), rn.GetInMemLogSize())
+						dn(shardID, nodeID), rl.Get(), rn.GetInMemLogSize())
 				}
 				return false
 			}
@@ -738,21 +738,21 @@ func (te *testEnv) checkNodesSynced(t *testing.T, nodes []*testNode, last bool) 
 	for _, n := range nodes {
 		nh := n.nh
 		for _, rn := range nh.Shards() {
-			clusterID := rn.ShardID()
+			shardID := rn.ShardID()
 			lastApplied := rn.GetLastApplied()
-			existingLastApplied, ok := appliedMap[clusterID]
+			existingLastApplied, ok := appliedMap[shardID]
 			if !ok {
-				appliedMap[clusterID] = lastApplied
+				appliedMap[shardID] = lastApplied
 			} else {
 				if existingLastApplied != lastApplied {
-					notSynced[clusterID] = struct{}{}
+					notSynced[shardID] = struct{}{}
 				}
 			}
 		}
 	}
 	if len(notSynced) > 0 {
 		if last {
-			logCluster(nodes, notSynced)
+			logShard(nodes, notSynced)
 			t.Fatalf("failed to sync all nodes")
 		}
 		return false
@@ -774,33 +774,33 @@ func (te *testEnv) logDBSynced(t *testing.T, nodes []*testNode, last bool) bool 
 		nh := n.nh
 		for _, rn := range nh.Shards() {
 			nodeID := rn.ReplicaID()
-			clusterID := rn.ShardID()
+			shardID := rn.ShardID()
 			lastApplied := rn.GetLastApplied()
 			logdb := nh.GetLogDB()
 			entries, _, err := logdb.IterateEntries(nil,
-				0, clusterID, nodeID, 1, lastApplied+1, math.MaxUint64)
+				0, shardID, nodeID, 1, lastApplied+1, math.MaxUint64)
 			if err != nil {
 				t.Fatalf("failed to get entries %v", err)
 			}
 			hash := getEntryListHash(entries)
 			plog.Infof("%s logdb entry hash %d, last applied %d, ent sz %d",
-				dn(clusterID, nodeID),
+				dn(shardID, nodeID),
 				hash, lastApplied, len(entries))
-			printEntries(clusterID, nodeID, entries)
-			existingHash, ok := hashMap[clusterID]
+			printEntries(shardID, nodeID, entries)
+			existingHash, ok := hashMap[shardID]
 			if !ok {
-				hashMap[clusterID] = hash
+				hashMap[shardID] = hash
 			} else {
 				if existingHash != hash {
-					notSynced[clusterID] = struct{}{}
+					notSynced[shardID] = struct{}{}
 				}
 			}
 		}
 	}
 	if len(notSynced) > 0 {
-		logCluster(te.nodehosts, notSynced)
+		logShard(te.nodehosts, notSynced)
 		if last {
-			t.Fatalf("%d clusters failed to have logDB synced, %v",
+			t.Fatalf("%d shards failed to have logDB synced, %v",
 				len(notSynced), notSynced)
 		}
 		return false
@@ -824,53 +824,53 @@ func (te *testEnv) checkStateMachine(t *testing.T, nodes []*testNode, last bool)
 	for _, n := range nodes {
 		nh := n.nh
 		for _, rn := range nh.Shards() {
-			clusterID := rn.ShardID()
+			shardID := rn.ShardID()
 			hash := rn.GetStateMachineHash()
 			sessionHash := rn.GetSessionHash()
 			membershipHash := rn.GetMembershipHash()
 			// check hash
-			existingHash, ok := hashMap[clusterID]
+			existingHash, ok := hashMap[shardID]
 			if !ok {
-				hashMap[clusterID] = hash
+				hashMap[shardID] = hash
 			} else {
 				if existingHash != hash {
-					inconsistent[clusterID] = struct{}{}
+					inconsistent[shardID] = struct{}{}
 					if last {
-						t.Errorf("hash mismatch, cluster id %d, existing %d, new %d",
-							clusterID, existingHash, hash)
+						t.Errorf("hash mismatch, shard id %d, existing %d, new %d",
+							shardID, existingHash, hash)
 					}
 				}
 			}
 			// check session hash
-			existingHash, ok = sessionHashMap[clusterID]
+			existingHash, ok = sessionHashMap[shardID]
 			if !ok {
-				sessionHashMap[clusterID] = sessionHash
+				sessionHashMap[shardID] = sessionHash
 			} else {
 				if existingHash != sessionHash {
-					inconsistent[clusterID] = struct{}{}
+					inconsistent[shardID] = struct{}{}
 					if last {
-						t.Errorf("session hash mismatch, cluster id %d, existing %d, new %d",
-							clusterID, existingHash, sessionHash)
+						t.Errorf("session hash mismatch, shard id %d, existing %d, new %d",
+							shardID, existingHash, sessionHash)
 					}
 				}
 			}
 			// check membership
-			existingHash, ok = membershipMap[clusterID]
+			existingHash, ok = membershipMap[shardID]
 			if !ok {
-				membershipMap[clusterID] = membershipHash
+				membershipMap[shardID] = membershipHash
 			} else {
 				if existingHash != membershipHash {
-					inconsistent[clusterID] = struct{}{}
+					inconsistent[shardID] = struct{}{}
 					if last {
-						t.Errorf("membership hash mismatch, cluster id %d, %d vs %d",
-							clusterID, existingHash, membershipHash)
+						t.Errorf("membership hash mismatch, shard id %d, %d vs %d",
+							shardID, existingHash, membershipHash)
 					}
 				}
 			}
 		}
 	}
 	if len(inconsistent) > 0 && last {
-		logCluster(nodes, inconsistent)
+		logShard(nodes, inconsistent)
 		t.Fatalf("inconsistent sm state found")
 	}
 	return len(inconsistent) == 0
@@ -913,10 +913,10 @@ func (te *testEnv) stopNodes(nodes []*testNode) {
 	}
 }
 
-func (te *testEnv) checkClustersLaunched(t *testing.T, last bool) bool {
-	clusters := make(map[uint64]uint64)
-	clustersReady := func(cs map[uint64]uint64) bool {
-		if uint64(len(cs)) != te.ts.numOfClusters {
+func (te *testEnv) checkShardsLaunched(t *testing.T, last bool) bool {
+	shards := make(map[uint64]uint64)
+	shardsReady := func(cs map[uint64]uint64) bool {
+		if uint64(len(cs)) != te.ts.numOfShards {
 			return false
 		}
 		for _, count := range cs {
@@ -929,16 +929,16 @@ func (te *testEnv) checkClustersLaunched(t *testing.T, last bool) bool {
 	for _, tn := range te.nodehosts {
 		nh := tn.nh
 		for _, node := range nh.Shards() {
-			if count, ok := clusters[node.ShardID()]; ok {
-				clusters[node.ShardID()] = count + 1
+			if count, ok := shards[node.ShardID()]; ok {
+				shards[node.ShardID()] = count + 1
 			} else {
-				clusters[node.ShardID()] = 1
+				shards[node.ShardID()] = 1
 			}
 		}
 	}
-	ready := clustersReady(clusters)
+	ready := shardsReady(shards)
 	if last && !ready {
-		t.Fatalf("not all clusters are launched")
+		t.Fatalf("not all shards are launched")
 	}
 	return ready
 }
@@ -963,7 +963,7 @@ func waitForStableNodes(nodes []*testNode, seconds uint64) bool {
 			nodeReady = true
 			leaderReady = true
 			leaderMap := make(map[uint64]struct{})
-			clusterSet := make(map[uint64]struct{})
+			shardSet := make(map[uint64]struct{})
 			time.Sleep(100 * time.Millisecond)
 			totalWait += 100
 			if totalWait >= waitMilliseconds {
@@ -974,9 +974,9 @@ func waitForStableNodes(nodes []*testNode, seconds uint64) bool {
 					continue
 				}
 				nh := node.nh
-				clusters := nh.Shards()
-				for _, rn := range clusters {
-					clusterSet[rn.ShardID()] = struct{}{}
+				shards := nh.Shards()
+				for _, rn := range shards {
+					shardSet[rn.ShardID()] = struct{}{}
 					isLeader := rn.IsLeader()
 					isFollower := rn.IsFollower()
 					if !isLeader && !isFollower {
@@ -988,7 +988,7 @@ func waitForStableNodes(nodes []*testNode, seconds uint64) bool {
 					}
 				}
 			}
-			if len(leaderMap) != len(clusterSet) {
+			if len(leaderMap) != len(shardSet) {
 				leaderReady = false
 			}
 		}
@@ -1100,16 +1100,16 @@ func getDrummerClient(drummerAddressList []string) (pb.DrummerClient, *client.Co
 	return nil, nil
 }
 
-func submitClusters(count uint64,
+func submitShards(count uint64,
 	name string, dclient pb.DrummerClient) error {
-	plog.Infof("going to send cluster info to drummer")
+	plog.Infof("going to send shard info to drummer")
 	for i := uint64(0); i < count; i++ {
-		clusterID := i + 1
+		shardID := i + 1
 		ctx, cancel := context.WithTimeout(context.Background(), defaultTestTimeout)
 		if err := SubmitCreateDrummerChange(ctx,
-			dclient, clusterID, []uint64{defaultNodeID1, defaultNodeID2, defaultNodeID3}, name); err != nil {
-			plog.Errorf("failed to submit drummer change, cluster %d, %v",
-				clusterID, err)
+			dclient, shardID, []uint64{defaultNodeID1, defaultNodeID2, defaultNodeID3}, name); err != nil {
+			plog.Errorf("failed to submit drummer change, shard %d, %v",
+				shardID, err)
 			cancel()
 			return err
 		}
@@ -1142,7 +1142,7 @@ func (te *testEnv) submitJobs(name string) bool {
 			continue
 		}
 		defer connection.Close()
-		if err := submitClusters(te.ts.numOfClusters, name, dc); err == nil {
+		if err := submitShards(te.ts.numOfShards, name, dc); err == nil {
 			return true
 		}
 		time.Sleep(time.Duration(NodeHostInfoReportSecond) * time.Second)
@@ -1150,23 +1150,23 @@ func (te *testEnv) submitJobs(name string) bool {
 	return false
 }
 
-func (te *testEnv) checkClustersAreAccessible(t *testing.T) {
+func (te *testEnv) checkShardsAreAccessible(t *testing.T) {
 	if te.ts.slowvm {
 		plog.Infof("running on slow vm, availability check skipped")
 		return
 	}
 	synced := make(map[uint64]struct{})
 	timeout := defaultTestTimeout
-	count := te.ts.numOfClusters
+	count := te.ts.numOfShards
 	for iteration := 0; iteration < 100; iteration++ {
-		for clusterID := uint64(1); clusterID <= count; clusterID++ {
-			if _, ok := synced[clusterID]; ok {
+		for shardID := uint64(1); shardID <= count; shardID++ {
+			if _, ok := synced[shardID]; ok {
 				continue
 			}
-			plog.Infof("checking cluster availability for %d", clusterID)
+			plog.Infof("checking shard availability for %d", shardID)
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			if te.makeMonkeyRequests(ctx, clusterID, false) {
-				synced[clusterID] = struct{}{}
+			if te.makeMonkeyRequests(ctx, shardID, false) {
+				synced[shardID] = struct{}{}
 			}
 			cancel()
 		}
@@ -1174,11 +1174,11 @@ func (te *testEnv) checkClustersAreAccessible(t *testing.T) {
 			return
 		}
 	}
-	t.Fatalf("%d clusters are not accessible", count-uint64(len(synced)))
+	t.Fatalf("%d shards are not accessible", count-uint64(len(synced)))
 }
 
 func (te *testEnv) getRequestAddress(ctx context.Context,
-	clusterID uint64) (string, string, bool) {
+	shardID uint64) (string, string, bool) {
 	p := client.NewDrummerConnectionPool()
 	defer p.Close()
 	var conn *client.Connection
@@ -1198,10 +1198,10 @@ func (te *testEnv) getRequestAddress(ctx context.Context,
 		return "", "", false
 	}
 	client := pb.NewDrummerClient(conn.ClientConn())
-	req := &pb.ClusterStateRequest{ClusterIdList: []uint64{clusterID}}
-	resp, err := client.GetClusterStates(ctx, req)
+	req := &pb.ShardStateRequest{ShardIdList: []uint64{shardID}}
+	resp, err := client.GetShardStates(ctx, req)
 	if err != nil {
-		plog.Warningf("failed to get cluster info %v", err)
+		plog.Warningf("failed to get shard info %v", err)
 		return "", "", false
 	}
 	if len(resp.Collection) != 1 {
@@ -1251,22 +1251,22 @@ func getMonkeyTestClients(ctx context.Context,
 }
 
 func makeWriteRequest(ctx context.Context,
-	client mr.NodehostAPIClient, clusterID uint64, kv *kv.KV) bool {
+	client mr.NodehostAPIClient, shardID uint64, kv *kv.KV) bool {
 	data, err := kv.MarshalBinary()
 	if err != nil {
 		panic(err)
 	}
 	// get client session
-	req := &mr.SessionRequest{ClusterId: clusterID}
+	req := &mr.SessionRequest{ShardId: shardID}
 	cs, err := client.GetSession(ctx, req)
 	if err != nil {
-		plog.Warningf("failed to get client session for cluster %d, %v",
-			clusterID, err)
+		plog.Warningf("failed to get client session for shard %d, %v",
+			shardID, err)
 		return false
 	}
 	defer client.CloseSession(ctx, cs)
 	raftProposal := &mr.RaftProposal{
-		Session: *cs,
+		Session: cs,
 		Data:    data,
 	}
 	resp, err := client.Propose(ctx, raftProposal)
@@ -1274,9 +1274,11 @@ func makeWriteRequest(ctx context.Context,
 		if resp.Result != uint64(len(data)) {
 			plog.Panicf("result %d, want %d", resp.Result, uint64(len(data)))
 		}
-		if !cs.IsNoOPSession() {
-			cs.ProposalCompleted()
+		nhcs := ToNodeHostSession(cs)
+		if !nhcs.IsNoOPSession() {
+			nhcs.ProposalCompleted()
 		}
+		cs = ToPBSession(nhcs)
 	} else {
 		plog.Warningf("failed to make proposal %v", err)
 		return false
@@ -1285,10 +1287,10 @@ func makeWriteRequest(ctx context.Context,
 }
 
 func makeReadRequest(ctx context.Context,
-	client mr.NodehostAPIClient, clusterID uint64, kv *kv.KV) bool {
+	client mr.NodehostAPIClient, shardID uint64, kv *kv.KV) bool {
 	ri := &mr.RaftReadIndex{
-		ClusterId: clusterID,
-		Data:      []byte(kv.Key),
+		ShardId: shardID,
+		Data:    []byte(kv.Key),
 	}
 	resp, err := client.Read(ctx, ri)
 	if err != nil {
@@ -1304,8 +1306,8 @@ func makeReadRequest(ctx context.Context,
 }
 
 func (te *testEnv) makeMonkeyRequests(ctx context.Context,
-	clusterID uint64, repeated bool) bool {
-	writeAddr, readAddr, ok := te.getRequestAddress(ctx, clusterID)
+	shardID uint64, repeated bool) bool {
+	writeAddr, readAddr, ok := te.getRequestAddress(ctx, shardID)
 	if !ok {
 		plog.Infof("failed to get read write address")
 		return false
@@ -1329,8 +1331,8 @@ func (te *testEnv) makeMonkeyRequests(ctx context.Context,
 			Val: val,
 		}
 		cctx, cancel := context.WithTimeout(ctx, 2*defaultTestTimeout)
-		if makeWriteRequest(cctx, writeClient, clusterID, kv) {
-			if !makeReadRequest(cctx, readClient, clusterID, kv) {
+		if makeWriteRequest(cctx, writeClient, shardID, kv) {
+			if !makeReadRequest(cctx, readClient, shardID, kv) {
 				cancel()
 				return false
 			} else {
@@ -1353,12 +1355,12 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 	if nh.Stopped() {
 		return false
 	}
-	clusterID := rand.Uint64()%te.ts.numOfClusters + 1
+	shardID := rand.Uint64()%te.ts.numOfShards + 1
 	nodeID := []uint64{defaultNodeID1, defaultNodeID2, defaultNodeID3}[rand.Uint64()%3]
-	if err := nh.RequestLeaderTransfer(clusterID, nodeID); err != nil {
+	if err := nh.RequestLeaderTransfer(shardID, nodeID); err != nil {
 		plog.Errorf("leader transfer request failed, %v", err)
 	}
-	session := nh.GetNoOPSession(clusterID)
+	session := nh.GetNoOPSession(shardID)
 	if session == nil {
 		return true
 	}
@@ -1370,8 +1372,8 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 	if err != nil {
 		panic(err)
 	}
-	plog.Infof("making a test proposal on %s, cluster %d, %d bytes",
-		nh.RaftAddress(), clusterID, len(data))
+	plog.Infof("making a test proposal on %s, shard %d, %d bytes",
+		nh.RaftAddress(), shardID, len(data))
 	rs, err := nh.Propose(session, data, 10*time.Second)
 	if err == dragonboat.ErrClosed || err == dragonboat.ErrShardClosed {
 		return false
@@ -1390,7 +1392,7 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 		case <-ticker.C:
 			wait++
 			if wait%10 == 0 {
-				plog.Infof("waited %d seconds, cluster %d", wait, clusterID)
+				plog.Infof("waited %d seconds, shard %d", wait, shardID)
 			}
 			if wait == 18 {
 				select {
@@ -1398,8 +1400,8 @@ func (te *testEnv) checkProposalResponse(nh *dragonboat.NodeHost) bool {
 					return true
 				default:
 				}
-				plog.Panicf("failed to get response, cluster %d, nh %s",
-					clusterID, nh.RaftAddress())
+				plog.Panicf("failed to get response, shard %d, nh %s",
+					shardID, nh.RaftAddress())
 			}
 		case <-rs.AppliedC():
 			return true
@@ -1412,14 +1414,14 @@ func (te *testEnv) checkSnapshotOp(nh *dragonboat.NodeHost) bool {
 	if nh.Stopped() || snapshotDisabledInConfig() {
 		return false
 	}
-	clusterID := rand.Uint64()%te.ts.numOfClusters + 1
-	clusterID2 := rand.Uint64()%te.ts.numOfClusters + 1
+	shardID := rand.Uint64()%te.ts.numOfShards + 1
+	shardID2 := rand.Uint64()%te.ts.numOfShards + 1
 	nodeID := []uint64{defaultNodeID1, defaultNodeID2, defaultNodeID3}[rand.Uint64()%3]
-	rs, err := nh.RequestSnapshot(clusterID, dragonboat.DefaultSnapshotOption, 2*time.Second)
+	rs, err := nh.RequestSnapshot(shardID, dragonboat.DefaultSnapshotOption, 2*time.Second)
 	if err != nil {
 		return true
 	}
-	rs2, err := nh.RequestCompaction(clusterID2, nodeID)
+	rs2, err := nh.RequestCompaction(shardID2, nodeID)
 	if err != nil {
 		return true
 	}
@@ -1471,10 +1473,10 @@ func (te *testEnv) startFastWorker() {
 				for i := 0; i < 100; i++ {
 					if cont := func() bool {
 						timeout := defaultTestTimeout
-						clusterID := client.HardWorkerTestClusterID
+						shardID := client.HardWorkerTestShardID
 						ctx, cancel := context.WithTimeout(context.Background(), timeout)
 						defer cancel()
-						if !te.makeMonkeyRequests(ctx, clusterID, false) {
+						if !te.makeMonkeyRequests(ctx, shardID, false) {
 							return false
 						}
 						return true
@@ -1505,9 +1507,9 @@ func (te *testEnv) startRequestWorkers() {
 					tick++
 					if tick-lastDone > 5 {
 						timeout := 3 * defaultTestTimeout
-						clusterID := getRandomClusterID(te.ts.numOfClusters)
+						shardID := getRandomShardID(te.ts.numOfShards)
 						ctx, cancel := context.WithTimeout(context.Background(), timeout)
-						if te.makeMonkeyRequests(ctx, clusterID, true) {
+						if te.makeMonkeyRequests(ctx, shardID, true) {
 							lastDone = tick
 						}
 						cancel()
@@ -1582,17 +1584,17 @@ func (te *testEnv) isDrummerReady(t *testing.T,
 		}
 		leaderChecked = true
 		if !checkLeaderOnly {
-			mc, err := n.getClusters()
+			mc, err := n.getShards()
 			if err != nil {
 				if last {
-					t.Fatalf("failed to get multiCluster %v", err)
+					t.Fatalf("failed to get multiShard %v", err)
 				}
 				return false
 			}
-			plog.Infof("num of clusters known to drummer %d", mc.size())
-			if uint64(mc.size()) != te.ts.numOfClusters {
+			plog.Infof("num of shards known to drummer %d", mc.size())
+			if uint64(mc.size()) != te.ts.numOfShards {
 				if last {
-					t.Fatalf("cluster count %d, want %d", mc.size(), te.ts.numOfClusters)
+					t.Fatalf("shard count %d, want %d", mc.size(), te.ts.numOfShards)
 				}
 				return false
 			}
@@ -1636,42 +1638,42 @@ func (te *testEnv) monkeyTest(t *testing.T) {
 	}
 }
 
-func (te *testEnv) checkClusterState(t *testing.T, last bool) bool {
+func (te *testEnv) checkShardState(t *testing.T, last bool) bool {
 	node := te.drummers[rand.Uint64()%uint64(len(te.drummers))]
-	mc, tick, err := node.getClustersAndTick()
+	mc, tick, err := node.getShardsAndTick()
 	if err != nil {
 		if last {
-			t.Fatalf("failed to get multiCluster, %v", err)
+			t.Fatalf("failed to get multiShard, %v", err)
 		}
 		return false
 	}
-	if uint64(mc.size()) != te.ts.numOfClusters {
+	if uint64(mc.size()) != te.ts.numOfShards {
 		if last {
-			t.Fatalf("cluster count %d, want %d", mc.size(), te.ts.numOfClusters)
+			t.Fatalf("shard count %d, want %d", mc.size(), te.ts.numOfShards)
 		}
 		return false
 	}
 	toFix := make(map[uint64]struct{})
-	rc := mc.getClusterForRepair(tick)
+	rc := mc.getShardForRepair(tick)
 	for _, cr := range rc {
-		toFix[cr.clusterID] = struct{}{}
+		toFix[cr.shardID] = struct{}{}
 	}
-	uc := mc.getUnavailableClusters(tick)
+	uc := mc.getUnavailableShards(tick)
 	for _, cr := range uc {
-		toFix[cr.ClusterID] = struct{}{}
+		toFix[cr.ShardID] = struct{}{}
 	}
 	if last {
 		if len(rc) > 0 {
-			t.Errorf("to be repaired cluster %d, want 0", len(rc))
-			logClusterToRepair(rc, tick)
+			t.Errorf("to be repaired shard %d, want 0", len(rc))
+			logShardToRepair(rc, tick)
 		}
 		if len(uc) > 0 {
-			t.Errorf("unavailable cluster %d, want 0", len(uc))
-			logUnavailableCluster(uc, tick)
+			t.Errorf("unavailable shard %d, want 0", len(uc))
+			logUnavailableShard(uc, tick)
 		}
 		if len(toFix) > 0 {
-			t.Errorf("to fix cluster %d, want 0", len(toFix))
-			logCluster(te.nodehosts, toFix)
+			t.Errorf("to fix shard %d, want 0", len(toFix))
+			logShard(te.nodehosts, toFix)
 		}
 	}
 	return len(rc) == 0 && len(uc) == 0
@@ -1736,16 +1738,16 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	if !te.submitJobs(name) {
 		t.Fatalf("failed to submit the test job")
 	}
-	plog.Infof("jobs submitted, waiting for clusters to be launched")
-	check(t, te.checkClustersLaunched, 30)
-	plog.Infof("all clusters launched, wait for drummer to be ready")
+	plog.Infof("jobs submitted, waiting for shards to be launched")
+	check(t, te.checkShardsLaunched, 30)
+	plog.Infof("all shards launched, wait for drummer to be ready")
 	check(t, te.checkDrummerIsReady, 10)
 	plog.Infof("drummer is ready")
 	te.randomDropPacket(true)
 	te.startRequestWorkers()
 	if lessSnapshotTest() {
 		plog.Infof("going to start fast worker")
-		disableClusterRandomDelay(client.HardWorkerTestClusterID)
+		disableShardRandomDelay(client.HardWorkerTestShardID)
 		te.startFastWorker()
 	}
 	checker := lcm.NewCoordinator(context.Background(),
@@ -1765,17 +1767,17 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	te.randomDropPacket(false)
 	plog.Infof("all nodes restarted")
 	check(t, te.checkDrummerIsReady, 60)
-	plog.Infof("going to check drummer cluster info")
-	check(t, te.checkClusterState, 60)
+	plog.Infof("going to check drummer shard info")
+	check(t, te.checkShardState, 60)
 	checker.Stop()
 	checker.SaveAsJepsenLog(lcmlog)
 	checker.SaveAsEDNLog(ednlog)
 	plog.Infof("dumping memory profile to disk")
 	saveHeapProfile("drummer_mem.pprof")
 	te.ensureNodeHostNotPartitioned(t)
-	plog.Infof("going to check nodehost cluster state")
+	plog.Infof("going to check nodehost shard state")
 	te.waitForNodeHosts()
-	plog.Infof("clusters stable check done")
+	plog.Infof("shards stable check done")
 	check(t, te.checkNodeHostsSynced, 60)
 	plog.Infof("sync check done")
 	check(t, te.checkNodeHostSM, 60)
@@ -1790,8 +1792,8 @@ func drummerMonkeyTesting(t *testing.T, to *testOption, name string) {
 	plog.Infof("going to check in mem log sizes")
 	check(t, te.checkRateLimiterState, 30)
 	plog.Infof("total completed IO: %d", atomic.LoadUint64(&te.completedIO))
-	plog.Infof("going to check cluster accessibility")
-	//te.checkClustersAreAccessible(t)
-	plog.Infof("cluster accessibility checked")
+	plog.Infof("going to check shard accessibility")
+	//te.checkShardsAreAccessible(t)
+	plog.Infof("shard accessibility checked")
 	plog.Infof("all done, test is going to return.")
 }

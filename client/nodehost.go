@@ -37,9 +37,9 @@ const (
 )
 
 var (
-	// HardWorkerTestClusterID is the cluster ID of the cluster targeted by the
+	// HardWorkerTestShardID is the cluster ID of the cluster targeted by the
 	// hard worker.
-	HardWorkerTestClusterID uint64 = 1
+	HardWorkerTestShardID uint64 = 1
 	// DrummerClientName is the name of the default master client.
 	DrummerClientName      = settings.Soft.DrummerClientName
 	getConnectedTimeoutSec = settings.Soft.GetConnectedTimeoutSecond
@@ -57,7 +57,7 @@ type DrummerClient struct {
 	nh  *dragonboat.NodeHost
 	req struct {
 		sync.Mutex
-		requests []pb.NodeHostRequest
+		requests []*pb.NodeHostRequest
 	}
 	mu struct {
 		sync.Mutex
@@ -73,7 +73,7 @@ func NewDrummerClient(nh *dragonboat.NodeHost) *DrummerClient {
 		nh:          nh,
 		connections: NewDrummerConnectionPool(),
 	}
-	dc.req.requests = make([]pb.NodeHostRequest, 0)
+	dc.req.requests = make([]*pb.NodeHostRequest, 0)
 	// currently it is hard coded to scan the working dir for plugins.
 	// might need to make this configurable.
 	dc.mu.smFactory = getPluginMap(".")
@@ -109,7 +109,7 @@ func (dc *DrummerClient) SendNodeHostInfo(ctx context.Context,
 		return err
 	}
 	client := pb.NewDrummerClient(conn.ClientConn())
-	il, err := client.GetClusterConfigChangeIndexList(ctx, nil)
+	il, err := client.GetShardConfigChangeIndexList(ctx, nil)
 	if err != nil {
 		conn.Close()
 		return err
@@ -117,10 +117,10 @@ func (dc *DrummerClient) SendNodeHostInfo(ctx context.Context,
 	plog.Debugf("%s got cluster config change index from %s: %v",
 		nhi.RaftAddress, drummerAPIAddress, il.Indexes)
 	cil := make([]clusterInfo, 0)
-	clusterIDList := make([]uint64, 0)
+	shardIDList := make([]uint64, 0)
 	for _, v := range nhi.ShardInfoList {
 		incomplete := false
-		clusterIDList = append(clusterIDList, v.ShardID)
+		shardIDList = append(shardIDList, v.ShardID)
 		cci, ok := il.Indexes[v.ShardID]
 		if ok && cci >= v.ConfigChangeIndex && !v.Pending {
 			incomplete = true
@@ -142,8 +142,8 @@ func (dc *DrummerClient) SendNodeHostInfo(ctx context.Context,
 	info := &pb.NodeHostInfo{
 		RaftAddress:      nhi.RaftAddress,
 		RPCAddress:       APIAddress,
-		ClusterInfo:      toDrummerPBClusterInfo(cil),
-		ClusterIdList:    clusterIDList,
+		ShardInfo:        toDrummerPBShardInfo(cil),
+		ShardIdList:      shardIDList,
 		PlogInfoIncluded: logInfoIncluded,
 		PlogInfo:         toDrummerPBLogInfo(nhi.LogInfo),
 		Region:           DefaultRegion,
@@ -164,16 +164,16 @@ func (dc *DrummerClient) SendNodeHostInfo(ctx context.Context,
 	return nil
 }
 
-func toDrummerPBClusterInfo(cil []clusterInfo) []pb.ClusterInfo {
-	result := make([]pb.ClusterInfo, 0)
+func toDrummerPBShardInfo(cil []clusterInfo) []*pb.ShardInfo {
+	result := make([]*pb.ShardInfo, 0)
 	for _, vv := range cil {
 		v := vv.info
 		incomplete := vv.incomplete
-		pbv := pb.ClusterInfo{
-			ClusterId:         v.ShardID,
-			NodeId:            v.ReplicaID,
+		pbv := &pb.ShardInfo{
+			ShardId:           v.ShardID,
+			ReplicaId:         v.ReplicaID,
 			IsLeader:          v.IsLeader,
-			Nodes:             v.Replicas,
+			Replicas:          v.Replicas,
 			ConfigChangeIndex: v.ConfigChangeIndex,
 			Incomplete:        incomplete,
 			Pending:           v.Pending,
@@ -183,12 +183,12 @@ func toDrummerPBClusterInfo(cil []clusterInfo) []pb.ClusterInfo {
 	return result
 }
 
-func toDrummerPBLogInfo(loginfo []raftio.NodeInfo) []pb.LogInfo {
-	result := make([]pb.LogInfo, 0)
+func toDrummerPBLogInfo(loginfo []raftio.NodeInfo) []*pb.LogInfo {
+	result := make([]*pb.LogInfo, 0)
 	for _, v := range loginfo {
-		pbv := pb.LogInfo{
-			ClusterId: v.ShardID,
-			NodeId:    v.ReplicaID,
+		pbv := &pb.LogInfo{
+			ShardId:   v.ShardID,
+			ReplicaId: v.ReplicaID,
 		}
 		result = append(result, pbv)
 	}
@@ -201,18 +201,18 @@ func (dc *DrummerClient) HandleMasterRequests(ctx context.Context) error {
 	if len(reqs) == 0 {
 		return nil
 	}
-	clusterIDMap := make(map[uint64]struct{})
+	shardIDMap := make(map[uint64]struct{})
 	for _, req := range reqs {
-		cid := req.Change.ClusterId
-		clusterIDMap[cid] = struct{}{}
+		cid := req.Change.ShardId
+		shardIDMap[cid] = struct{}{}
 	}
 	// each cluster is handled in its own worker goroutine
 	stopper := syncutil.NewStopper()
-	for k := range clusterIDMap {
-		clusterID := k
+	for k := range shardIDMap {
+		shardID := k
 		stopper.RunWorker(func() {
 			for _, req := range reqs {
-				if req.Change.ClusterId == clusterID {
+				if req.Change.ShardId == shardID {
 					dc.handleRequest(ctx, req)
 				}
 			}
@@ -240,22 +240,22 @@ func (dc *DrummerClient) getDrummerConnection(ctx context.Context,
 	return conn, nil
 }
 
-func (dc *DrummerClient) addRequests(reqs []pb.NodeHostRequest) {
+func (dc *DrummerClient) addRequests(reqs []*pb.NodeHostRequest) {
 	dc.req.Lock()
 	defer dc.req.Unlock()
 	dc.req.requests = append(dc.req.requests, reqs...)
 }
 
-func (dc *DrummerClient) getRequests() []pb.NodeHostRequest {
+func (dc *DrummerClient) getRequests() []*pb.NodeHostRequest {
 	dc.req.Lock()
 	defer dc.req.Unlock()
 	results := dc.req.requests
-	dc.req.requests = make([]pb.NodeHostRequest, 0)
+	dc.req.requests = make([]*pb.NodeHostRequest, 0)
 	return results
 }
 
 func (dc *DrummerClient) handleRequest(ctx context.Context,
-	req pb.NodeHostRequest) {
+	req *pb.NodeHostRequest) {
 	reqCtx, cancel := context.WithTimeout(ctx, localTimeoutMs)
 	defer cancel()
 	if req.Change.Type == pb.Request_CREATE {
@@ -270,22 +270,22 @@ func (dc *DrummerClient) handleRequest(ctx context.Context,
 	}
 }
 
-func (dc *DrummerClient) handleKillRequest(req pb.NodeHostRequest) {
-	nodeID := req.Change.Members[0]
-	clusterID := req.Change.ClusterId
+func (dc *DrummerClient) handleKillRequest(req *pb.NodeHostRequest) {
+	replicaID := req.Change.Members[0]
+	shardID := req.Change.ShardId
 	plog.Debugf("kill request handled on %s for %s",
-		dc.nh.RaftAddress(), logutil.DescribeNode(clusterID, nodeID))
-	if err := dc.nh.StopReplica(clusterID, nodeID); err != nil {
-		plog.Errorf("removeClusterNode for %s failed, %v",
-			logutil.DescribeNode(clusterID, nodeID), err)
+		dc.nh.RaftAddress(), logutil.DescribeNode(shardID, replicaID))
+	if err := dc.nh.StopReplica(shardID, replicaID); err != nil {
+		plog.Errorf("removeShardNode for %s failed, %v",
+			logutil.DescribeNode(shardID, replicaID), err)
 	} else {
 		plog.Infof("going to remove data for %s",
-			logutil.DescribeNode(clusterID, nodeID))
+			logutil.DescribeNode(shardID, replicaID))
 		for {
-			err := dc.nh.RemoveData(clusterID, nodeID)
+			err := dc.nh.RemoveData(shardID, replicaID)
 			if err != nil {
 				plog.Errorf("remove data failed %s, %v",
-					logutil.DescribeNode(clusterID, nodeID), err)
+					logutil.DescribeNode(shardID, replicaID), err)
 				if err == dragonboat.ErrShardNotStopped {
 					time.Sleep(100 * time.Millisecond)
 				} else {
@@ -299,23 +299,23 @@ func (dc *DrummerClient) handleKillRequest(req pb.NodeHostRequest) {
 }
 
 func (dc *DrummerClient) handleAddDeleteRequest(ctx context.Context,
-	req pb.NodeHostRequest) {
-	nodeID := req.Change.Members[0]
-	clusterID := req.Change.ClusterId
+	req *pb.NodeHostRequest) {
+	replicaID := req.Change.Members[0]
+	shardID := req.Change.ShardId
 	var rs *dragonboat.RequestState
 	var err error
 	if req.Change.Type == pb.Request_DELETE {
 		plog.Infof("delete request handled on %s for %s, conf change id %d",
-			dc.nh.RaftAddress(), logutil.DescribeNode(clusterID, nodeID),
+			dc.nh.RaftAddress(), logutil.DescribeNode(shardID, replicaID),
 			req.Change.ConfChangeId)
-		rs, err = dc.nh.RequestDeleteReplica(clusterID, nodeID,
+		rs, err = dc.nh.RequestDeleteReplica(shardID, replicaID,
 			req.Change.ConfChangeId, localTimeoutMs)
 	} else if req.Change.Type == pb.Request_ADD {
 		plog.Infof("add request handled on %s for %s, conf change id %d",
-			dc.nh.RaftAddress(), logutil.DescribeNode(clusterID, nodeID),
+			dc.nh.RaftAddress(), logutil.DescribeNode(shardID, replicaID),
 			req.Change.ConfChangeId)
 		url := req.AddressList[0]
-		rs, err = dc.nh.RequestAddReplica(clusterID, nodeID, url,
+		rs, err = dc.nh.RequestAddReplica(shardID, replicaID, url,
 			req.Change.ConfChangeId, localTimeoutMs)
 	} else {
 		plog.Panicf("unknown request type %s", req.Change.Type)
@@ -340,12 +340,12 @@ func (dc *DrummerClient) handleAddDeleteRequest(ctx context.Context,
 		}
 		if v.Completed() && req.Change.Type == pb.Request_DELETE {
 			plog.Infof("DELETE node completed, try to remove data for %s",
-				logutil.DescribeNode(clusterID, nodeID))
+				logutil.DescribeNode(shardID, replicaID))
 			for {
-				err := dc.nh.RemoveData(clusterID, nodeID)
+				err := dc.nh.RemoveData(shardID, replicaID)
 				if err != nil {
 					plog.Errorf("remove deleted node's data failed %s, %v",
-						logutil.DescribeNode(clusterID, nodeID), err)
+						logutil.DescribeNode(shardID, replicaID), err)
 					if err == dragonboat.ErrShardNotStopped {
 						time.Sleep(100 * time.Millisecond)
 					} else {
@@ -360,7 +360,7 @@ func (dc *DrummerClient) handleAddDeleteRequest(ctx context.Context,
 	}
 }
 
-func getConfig(req pb.NodeHostRequest) config.Config {
+func getConfig(req *pb.NodeHostRequest) config.Config {
 	return config.Config{
 		DisableAutoCompactions: true,
 		ElectionRTT:            req.Config.ElectionRTT,
@@ -372,11 +372,11 @@ func getConfig(req pb.NodeHostRequest) config.Config {
 	}
 }
 
-func (dc *DrummerClient) handleInstantiateRequest(req pb.NodeHostRequest) {
+func (dc *DrummerClient) handleInstantiateRequest(req *pb.NodeHostRequest) {
 	requestType := ""
-	nodeID := req.InstantiateNodeId
-	clusterID := req.Change.ClusterId
-	hasNodeInfo := dc.nh.HasNodeInfo(clusterID, nodeID)
+	replicaID := req.InstantiateReplicaId
+	shardID := req.Change.ShardId
+	hasNodeInfo := dc.nh.HasNodeInfo(shardID, replicaID)
 	peers := make(map[uint64]string)
 	// based on the request, check whether the local NodeInfo record is consistent
 	// with what drummer wants us to do
@@ -385,14 +385,14 @@ func (dc *DrummerClient) handleInstantiateRequest(req pb.NodeHostRequest) {
 		requestType = "join"
 		if hasNodeInfo {
 			plog.Warningf("node %s info found on %s, will ignore the request",
-				logutil.DescribeNode(clusterID, nodeID), dc.nh.RaftAddress())
+				logutil.DescribeNode(shardID, replicaID), dc.nh.RaftAddress())
 		}
 	} else if !req.Join && req.Restore {
 		// restore
 		requestType = "restore"
 		if !hasNodeInfo {
 			plog.Warningf("node %s info not found on %s, disk has been replaced?",
-				logutil.DescribeNode(clusterID, nodeID), dc.nh.RaftAddress())
+				logutil.DescribeNode(shardID, replicaID), dc.nh.RaftAddress())
 			return
 		}
 	} else if !req.Join && !req.Restore {
@@ -400,22 +400,22 @@ func (dc *DrummerClient) handleInstantiateRequest(req pb.NodeHostRequest) {
 		requestType = "launch"
 		if hasNodeInfo {
 			plog.Panicf("node %s info found on %s, launch failed",
-				logutil.DescribeNode(clusterID, nodeID), dc.nh.RaftAddress())
+				logutil.DescribeNode(shardID, replicaID), dc.nh.RaftAddress())
 		}
 		for k, v := range req.AddressList {
 			plog.Debugf("remote node info - id:%s, address:%s",
-				logutil.ReplicaID(req.NodeIdList[k]), v)
-			peers[req.NodeIdList[k]] = v
+				logutil.ReplicaID(req.ReplicaIdList[k]), v)
+			peers[req.ReplicaIdList[k]] = v
 		}
 	} else {
 		panic("unknown join && restore combination")
 	}
 	plog.Infof("%s request handled on %s for %s",
 		requestType, dc.nh.RaftAddress(),
-		logutil.DescribeNode(clusterID, nodeID))
+		logutil.DescribeNode(shardID, replicaID))
 	config := getConfig(req)
-	config.ReplicaID = nodeID
-	config.ShardID = req.Change.ClusterId
+	config.ReplicaID = replicaID
+	config.ShardID = req.Change.ShardId
 	config.OrderedConfigChange = true
 	pd, ok := dc.mu.smFactory[req.AppName]
 	if !ok {
@@ -437,6 +437,6 @@ func (dc *DrummerClient) handleInstantiateRequest(req pb.NodeHostRequest) {
 	}
 	if err != nil {
 		plog.Errorf("add cluster %s failed: %v",
-			logutil.DescribeNode(clusterID, nodeID), err)
+			logutil.DescribeNode(shardID, replicaID), err)
 	}
 }

@@ -13,66 +13,65 @@
 // limitations under the License.
 
 
-syntax = "proto2";
+syntax = "proto3";
 package multiraftpb;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
-import "github.com/lni/dragonboat/client/session.proto";
+option go_package= "github.com/lni/drummer/multiraftpb";
 
 // Session is the session object used to track proposals for the
 // specified raft cluster. SeriesID is a sequential id used to identify
 // proposals, RespondedTo is a sequential id used to track the last
 // responded proposal. 
 message Session {
-  optional uint64 ClusterID           = 1 [(gogoproto.nullable) = false];
-  optional uint64 ClientID            = 2 [(gogoproto.nullable) = false];
-  optional uint64 SeriesID            = 3 [(gogoproto.nullable) = false];
-  optional uint64 RespondedTo         = 4 [(gogoproto.nullable) = false];
+  uint64 ShardID             = 1;
+  uint64 ClientID            = 2;
+  uint64 SeriesID            = 3;
+  uint64 RespondedTo         = 4;
 }
 
 // SessionRequest is the message used to specified the interested raft
 // cluster.
 message SessionRequest {
-  required uint64 cluster_id = 1 [(gogoproto.nullable) = false];
+  uint64 shard_id = 1;
 }
 
 // SessionResponse is the message used to indicate whether the
 // Session object is successfully closed. 
 message SessionResponse {
-  required bool completed = 1 [(gogoproto.nullable) = false];
+  bool completed = 1;
 }
 
 // RaftProposal is the message used to describe the proposal to be made on the
 // selected raft cluster. 
 message RaftProposal {
-  optional client.Session session = 1 [(gogoproto.nullable) = false];
-  optional bytes data = 2;
+  Session session = 1;
+  bytes data = 2;
 }
 
 // RaftReadIndex is the message used to describe the input to the ReadIndex
 // protocol. The ReadIndex protocol is used for making linearizable read on
 // the selected raft cluster. 
 message RaftReadIndex {
-  optional uint64 cluster_id = 1 [(gogoproto.nullable) = false];
-  optional bytes data = 2;
+  uint64 shard_id = 1;
+  bytes data = 2;
 }
 
 // RaftResponse is the message used to describe the response produced by
 // the Update or Lookup function of the IDataStore instance. 
 message RaftResponse {
-  optional uint64 result = 1 [(gogoproto.nullable) = false];
-  optional bytes data = 2;
+  uint64 result = 1;
+  bytes data = 2;
 }
 
 service NodehostAPI {
   // GetSession returns a new Session object ready to be used for
   // making new proposals. 
-  rpc GetSession(SessionRequest) returns (client.Session) {}
+  rpc GetSession(SessionRequest) returns (Session) {}
   // CloseSession closes the specified Session object and removes
   // it from the associated Raft cluster. The Completed boolean field in
   // the returned SessionResponse object indicates whether the 
   // Session object is successfully closed. 
-  rpc CloseSession(client.Session) returns (SessionResponse) {}
+  rpc CloseSession(Session) returns (SessionResponse) {}
   // Propose makes a proposal. When there is no error, the Result field of the
   // returned RaftResponse is the uint64 value returned by the Update function
   // of the associated IDataStore instance.  

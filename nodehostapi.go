@@ -34,11 +34,30 @@ import (
 
 // NodehostAPI implements the grpc server used for making raft IO requests.
 type NodehostAPI struct {
+	pb.UnimplementedNodehostAPIServer
 	nh        *dragonboat.NodeHost
 	stopper   *syncutil.Stopper
 	server    *grpc.Server
 	mu        sync.Mutex
 	supportCS map[uint64]bool
+}
+
+func ToNodeHostSession(s *pb.Session) *client.Session {
+	return &client.Session{
+		ShardID:     s.ShardID,
+		ClientID:    s.ClientID,
+		SeriesID:    s.SeriesID,
+		RespondedTo: s.RespondedTo,
+	}
+}
+
+func ToPBSession(s *client.Session) *pb.Session {
+	return &pb.Session{
+		ShardID:     s.ShardID,
+		ClientID:    s.ClientID,
+		SeriesID:    s.SeriesID,
+		RespondedTo: s.RespondedTo,
+	}
 }
 
 // NewNodehostAPI creates a new NodehostAPI server instance.
@@ -84,10 +103,10 @@ func (api *NodehostAPI) Stop() {
 	api.server.Stop()
 }
 
-func (api *NodehostAPI) supportRegularSession(clusterID uint64) (bool, error) {
+func (api *NodehostAPI) supportRegularSession(shardID uint64) (bool, error) {
 	api.mu.Lock()
 	defer api.mu.Unlock()
-	v, ok := api.supportCS[clusterID]
+	v, ok := api.supportCS[shardID]
 	if ok {
 		return v, nil
 	}
@@ -96,9 +115,9 @@ func (api *NodehostAPI) supportRegularSession(clusterID uint64) (bool, error) {
 		return false, errors.New("stopped")
 	}
 	for _, ci := range nhi.ShardInfoList {
-		api.supportCS[clusterID] = ci.StateMachineType != sm.OnDiskStateMachine
+		api.supportCS[shardID] = ci.StateMachineType != sm.OnDiskStateMachine
 	}
-	v, ok = api.supportCS[clusterID]
+	v, ok = api.supportCS[shardID]
 	if ok {
 		return v, nil
 	}
@@ -107,25 +126,26 @@ func (api *NodehostAPI) supportRegularSession(clusterID uint64) (bool, error) {
 
 // GetSession gets a new client session instance.
 func (api *NodehostAPI) GetSession(ctx context.Context,
-	req *pb.SessionRequest) (*client.Session, error) {
-	s, err := api.supportRegularSession(req.ClusterId)
+	req *pb.SessionRequest) (*pb.Session, error) {
+	s, err := api.supportRegularSession(req.ShardId)
 	if err != nil {
 		return nil, err
 	}
 	if s {
-		cs, err := api.nh.SyncGetSession(ctx, req.ClusterId)
-		return cs, grpcError(err)
+		cs, err := api.nh.SyncGetSession(ctx, req.ShardId)
+		return ToPBSession(cs), grpcError(err)
 	}
-	return api.nh.GetNoOPSession(req.ClusterId), nil
+	return ToPBSession(api.nh.GetNoOPSession(req.ShardId)), nil
 }
 
 // CloseSession closes the specified client session instance.
 func (api *NodehostAPI) CloseSession(ctx context.Context,
-	cs *client.Session) (*pb.SessionResponse, error) {
-	if cs.IsNoOPSession() {
+	cs *pb.Session) (*pb.SessionResponse, error) {
+	nhcs := ToNodeHostSession(cs)
+	if nhcs.IsNoOPSession() {
 		return &pb.SessionResponse{Completed: true}, nil
 	}
-	if err := api.nh.SyncCloseSession(ctx, cs); err != nil {
+	if err := api.nh.SyncCloseSession(ctx, nhcs); err != nil {
 		e := grpcError(err)
 		return &pb.SessionResponse{Completed: false}, e
 	}
@@ -135,17 +155,19 @@ func (api *NodehostAPI) CloseSession(ctx context.Context,
 // Propose makes a propose.
 func (api *NodehostAPI) Propose(ctx context.Context,
 	req *pb.RaftProposal) (*pb.RaftResponse, error) {
-	v, err := api.nh.SyncPropose(ctx, &req.Session, req.Data)
+	cs := ToNodeHostSession(req.Session)
+	v, err := api.nh.SyncPropose(ctx, cs, req.Data)
 	if err != nil {
 		return nil, grpcError(err)
 	}
+	req.Session = ToPBSession(cs)
 	return &pb.RaftResponse{Result: v.Value}, nil
 }
 
 // Read makes a linearizable read operation.
 func (api *NodehostAPI) Read(ctx context.Context,
 	req *pb.RaftReadIndex) (*pb.RaftResponse, error) {
-	data, err := api.nh.SyncRead(ctx, req.ClusterId, req.Data)
+	data, err := api.nh.SyncRead(ctx, req.ShardId, req.Data)
 	if err != nil {
 		return nil, grpcError(err)
 	}

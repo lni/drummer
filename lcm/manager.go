@@ -164,7 +164,7 @@ const (
 // Coordinator is used to manage clients used for collecting test results.
 type Coordinator struct {
 	mu               sync.Mutex
-	clusterID        uint64
+	shardID          uint64
 	processes        []*process
 	events           []event
 	drummerAddresses []string
@@ -179,10 +179,10 @@ type Coordinator struct {
 
 // NewCoordinator returns a new Coordinator object.
 func NewCoordinator(ctx context.Context,
-	size uint64, clusterID uint64, drummerAddresses []string) *Coordinator {
+	size uint64, shardID uint64, drummerAddresses []string) *Coordinator {
 	cctx, cancel := context.WithCancel(ctx)
 	c := &Coordinator{
-		clusterID:        clusterID,
+		shardID:          shardID,
 		drummerAddresses: drummerAddresses,
 		processes:        make([]*process, 0),
 		events:           make([]event, 0),
@@ -332,13 +332,13 @@ func (c *Coordinator) scheduleProcesses() {
 		if rw == 0 {
 			// read
 			c.recordReadInvoked(p.id)
-			p.StartRead(readAddr, c.clusterID)
+			p.StartRead(readAddr, c.shardID)
 		} else {
 			// write
 			value := c.value
 			c.value = c.value + 1
 			c.recordWriteInvoked(p.id, value)
-			p.StartWrite(writeAddr, c.clusterID, value)
+			p.StartWrite(writeAddr, c.shardID, value)
 		}
 	}
 }
@@ -351,8 +351,8 @@ func (c *Coordinator) getTargetAddress() (string, string, bool) {
 		return "", "", false
 	}
 	client := pb.NewDrummerClient(conn.ClientConn())
-	req := &pb.ClusterStateRequest{ClusterIdList: []uint64{c.clusterID}}
-	resp, err := client.GetClusterStates(ctx, req)
+	req := &pb.ShardStateRequest{ShardIdList: []uint64{c.shardID}}
+	resp, err := client.GetShardStates(ctx, req)
 	if err != nil {
 		conn.Close()
 		return "", "", false

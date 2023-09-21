@@ -320,7 +320,7 @@ func (s *server) setDeploymentID(ctx context.Context,
 	if err != nil {
 		return 0, err
 	}
-	respDid, err := strconv.ParseUint(resp.KvResult.Value, 10, 64)
+	respDid, err := strconv.ParseUint(string(resp.KvResult.Value), 10, 64)
 	if err != nil {
 		return 0, err
 	}
@@ -332,7 +332,7 @@ func (s *server) getElectionInfo(ctx context.Context) (*pb.KV, error) {
 	req := pb.LookupRequest{
 		Type: pb.LookupRequest_KV,
 		KvLookup: &pb.KV{
-			Key: electionKey,
+			Key: []byte(electionKey),
 		},
 	}
 	resp, err := s.lookupDB(ctx, req)
@@ -455,9 +455,9 @@ func (s *server) getBooleanKV(ctx context.Context,
 	if err != nil {
 		return false, err
 	}
-	if resp.KvResult.Value == "false" || resp.KvResult.Value == "" {
+	if string(resp.KvResult.Value) == "false" || string(resp.KvResult.Value) == "" {
 		return false, nil
-	} else if resp.KvResult.Value == "true" {
+	} else if string(resp.KvResult.Value) == "true" {
 		return true, nil
 	} else {
 		panic("unknown value")
@@ -502,8 +502,8 @@ func (s *server) proposeFinalizedKV(ctx context.Context,
 	instanceID uint64) (uint64, error) {
 	session.ShardIDMustMatch(defaultShardID)
 	kv := &pb.KV{
-		Key:        key,
-		Value:      value,
+		Key:        []byte(key),
+		Value:      []byte(value),
 		Finalized:  true,
 		InstanceId: instanceID,
 	}
@@ -525,7 +525,7 @@ func (s *server) lookupKV(ctx context.Context,
 	defer cancel()
 	req := pb.LookupRequest{
 		Type:     pb.LookupRequest_KV,
-		KvLookup: &pb.KV{Key: key},
+		KvLookup: &pb.KV{Key: []byte(key)},
 	}
 	data, err := proto.Marshal(&req)
 	if err != nil {
@@ -547,7 +547,7 @@ func (s *server) getDeploymentID(ctx context.Context) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	respDid, err := strconv.ParseUint(resp.KvResult.Value, 10, 64)
+	respDid, err := strconv.ParseUint(string(resp.KvResult.Value), 10, 64)
 	if err != nil {
 		return 0, err
 	}

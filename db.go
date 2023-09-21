@@ -271,8 +271,8 @@ func isLaunchRequests(reqs pb.NodeHostRequestCollection) bool {
 
 func (d *DB) setLaunched() {
 	kv := pb.KV{
-		Key:       launchedKey,
-		Value:     "true",
+		Key:       []byte(launchedKey),
+		Value:     []byte("true"),
 		Finalized: true,
 	}
 	if d.applyKVUpdate(kv) != DBKVUpdated {
@@ -321,13 +321,13 @@ func (d *DB) applyKVUpdate(kv pb.KV) uint64 {
 	if err != nil {
 		panic(err)
 	}
-	data, ok := d.KVMap[kv.Key]
+	data, ok := d.KVMap[string(kv.Key)]
 	if !ok {
-		d.KVMap[kv.Key] = mkv
+		d.KVMap[string(kv.Key)] = mkv
 		return DBKVUpdated
 	}
 	var oldRec pb.KV
-	err = proto.Unmarshal(data, &oldRec)
+	err = proto.Unmarshal([]byte(data), &oldRec)
 	if err != nil {
 		panic(err)
 	}
@@ -335,7 +335,7 @@ func (d *DB) applyKVUpdate(kv pb.KV) uint64 {
 		return DBKVFinalized
 	} else if oldRec.InstanceId == kv.InstanceId ||
 		oldRec.InstanceId == kv.OldInstanceId {
-		d.KVMap[kv.Key] = mkv
+		d.KVMap[string(kv.Key)] = mkv
 		return DBKVUpdated
 	}
 	return DBKVRejected
@@ -468,7 +468,7 @@ func (d *DB) handleKVLookup(req pb.LookupRequest) []byte {
 	}
 	var resp pb.LookupResponse
 	resp.Code = pb.LookupResponse_OK
-	v, ok := d.KVMap[key]
+	v, ok := d.KVMap[string(key)]
 	if ok {
 		var kv pb.KV
 		err := proto.Unmarshal(v, &kv)
