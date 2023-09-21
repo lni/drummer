@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !dragonboat_monkeytest
 // +build !dragonboat_monkeytest
 
 package drummer
@@ -24,7 +25,7 @@ import (
 )
 
 func TestZeroTickZeroFirstObservedNodeIsConsideredAsDailed(t *testing.T) {
-	n := node{
+	n := replica{
 		Tick:          0,
 		FirstObserved: 0,
 	}
@@ -43,45 +44,44 @@ func TestZeroTickZeroFirstObservedNodeIsConsideredAsDailed(t *testing.T) {
 }
 
 func TestZombieNodeWithoutClustedrInfoWillBeReported(t *testing.T) {
-	mc := newMultiCluster()
-	ci := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+	mc := newMultiShard()
+	ci := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
 		ConfigChangeIndex: 100,
 	}
 	nhi := pb.NodeHostInfo{
 		RaftAddress: "a2",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci},
+		ShardInfo:   []*pb.ShardInfo{ci},
 	}
 	mc.update(nhi)
 
-	ci2 := pb.ClusterInfo{
-		ClusterId: 1,
-		NodeId:    4,
+	ci2 := &pb.ShardInfo{
+		ShardId:   1,
+		ReplicaId: 4,
 		Pending:   true,
 	}
 	nhi2 := pb.NodeHostInfo{
 		RaftAddress: "a4",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci2},
+		ShardInfo:   []*pb.ShardInfo{ci2},
 	}
 	mc.update(nhi2)
 
-	if len(mc.NodesToKill) != 1 {
-		t.Fatalf("nodes to kill not updated")
+	if len(mc.ReplicasToKill) != 1 {
+		t.Fatalf("replicas to kill not updated")
 	}
-
-	ntk := mc.NodesToKill[0]
-	if ntk.ClusterID != 1 {
-		t.Errorf("cluster id %d, want 1", ntk.ClusterID)
+	ntk := mc.ReplicasToKill[0]
+	if ntk.ShardID != 1 {
+		t.Errorf("shard id %d, want 1", ntk.ShardID)
 	}
-	if ntk.NodeID != 4 {
-		t.Errorf("node id %d, want 4", ntk.NodeID)
+	if ntk.ReplicaID != 4 {
+		t.Errorf("node id %d, want 4", ntk.ReplicaID)
 	}
 	if ntk.Address != "a4" {
 		t.Errorf("address %s, want a4", ntk.Address)
@@ -89,156 +89,156 @@ func TestZombieNodeWithoutClustedrInfoWillBeReported(t *testing.T) {
 }
 
 func TestZombieNodeWillBeReported(t *testing.T) {
-	mc := newMultiCluster()
-	ci := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+	mc := newMultiShard()
+	ci := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
 		ConfigChangeIndex: 100,
 	}
 	nhi := pb.NodeHostInfo{
 		RaftAddress: "a2",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci},
+		ShardInfo:   []*pb.ShardInfo{ci},
 	}
 	mc.update(nhi)
 
-	ci2 := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            4,
+	ci2 := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         4,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3", 4: "a4"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3", 4: "a4"},
 		ConfigChangeIndex: 50,
 	}
 	nhi2 := pb.NodeHostInfo{
 		RaftAddress: "a4",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci2},
+		ShardInfo:   []*pb.ShardInfo{ci2},
 	}
 	mc.update(nhi2)
 
-	if len(mc.NodesToKill) != 1 {
-		t.Fatalf("nodes to kill not updated")
+	if len(mc.ReplicasToKill) != 1 {
+		t.Fatalf("replicas to kill not updated")
 	}
-	ntk := mc.NodesToKill[0]
-	if ntk.ClusterID != 1 {
-		t.Errorf("cluster id %d, want 1", ntk.ClusterID)
+	ntk := mc.ReplicasToKill[0]
+	if ntk.ShardID != 1 {
+		t.Errorf("shard id %d, want 1", ntk.ShardID)
 	}
-	if ntk.NodeID != 4 {
-		t.Errorf("node id %d, want 4", ntk.NodeID)
+	if ntk.ReplicaID != 4 {
+		t.Errorf("node id %d, want 4", ntk.ReplicaID)
 	}
 	if ntk.Address != "a4" {
 		t.Errorf("address %s, want a4", ntk.Address)
 	}
-	gntk := mc.getToKillNodes()
-	if len(mc.NodesToKill) != 0 {
+	gntk := mc.getToKillReplicas()
+	if len(mc.ReplicasToKill) != 0 {
 		t.Errorf("failed to clear the ntk list")
 	}
 	if len(gntk) != 1 {
 		t.Errorf("failed to get the ntk list")
 	}
 	grntk := gntk[0]
-	if grntk.ClusterID != ntk.ClusterID ||
-		grntk.NodeID != ntk.NodeID ||
+	if grntk.ShardID != ntk.ShardID ||
+		grntk.ReplicaID != ntk.ReplicaID ||
 		grntk.Address != ntk.Address {
 		t.Errorf("unexpected value")
 	}
 }
 
-func TestMultiClusterUpdateCanAddCluster(t *testing.T) {
-	mc := newMultiCluster()
-	ci := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+func TestMultiShardUpdateCanAddShard(t *testing.T) {
+	mc := newMultiShard()
+	ci := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
 		ConfigChangeIndex: 1,
 	}
 	nhi := pb.NodeHostInfo{
 		RaftAddress: "a2",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci},
+		ShardInfo:   []*pb.ShardInfo{ci},
 	}
 	mc.update(nhi)
 
-	if len(mc.Clusters) != 1 {
-		t.Errorf("sz = %d, want %d", len(mc.Clusters), 1)
+	if len(mc.Shards) != 1 {
+		t.Errorf("sz = %d, want %d", len(mc.Shards), 1)
 	}
 
-	v, ok := mc.Clusters[1]
+	v, ok := mc.Shards[1]
 	if !ok {
-		t.Error("cluster id suppose to be 1")
+		t.Error("shard id suppose to be 1")
 	}
-	if v.ClusterID != 1 {
-		t.Errorf("cluster id %d, want 1", v.ClusterID)
+	if v.ShardID != 1 {
+		t.Errorf("shard id %d, want 1", v.ShardID)
 	}
 	if v.ConfigChangeIndex != 1 {
 		t.Errorf("ConfigChangeIndex = %d, want 1", v.ConfigChangeIndex)
 	}
-	if len(v.Nodes) != 3 {
-		t.Errorf("nodes sz = %d, want 3", len(v.Nodes))
+	if len(v.Replicas) != 3 {
+		t.Errorf("replicas sz = %d, want 3", len(v.Replicas))
 	}
-	if v.Nodes[2].Tick != 100 {
-		t.Errorf("tick = %d, want 100", v.Nodes[2].Tick)
+	if v.Replicas[2].Tick != 100 {
+		t.Errorf("tick = %d, want 100", v.Replicas[2].Tick)
 	}
-	if v.Nodes[1].Tick != 0 {
-		t.Errorf("tick = %d, want 0", v.Nodes[1].Tick)
+	if v.Replicas[1].Tick != 0 {
+		t.Errorf("tick = %d, want 0", v.Replicas[1].Tick)
 	}
-	if v.Nodes[1].FirstObserved != 100 {
-		t.Errorf("first observed = %d, want 100", v.Nodes[1].FirstObserved)
+	if v.Replicas[1].FirstObserved != 100 {
+		t.Errorf("first observed = %d, want 100", v.Replicas[1].FirstObserved)
 	}
-	if v.Nodes[2].Address != "a2" {
-		t.Errorf("address = %s, want a2", v.Nodes[2].Address)
+	if v.Replicas[2].Address != "a2" {
+		t.Errorf("address = %s, want a2", v.Replicas[2].Address)
 	}
 }
 
-func TestMultiClusterUpdateCanUpdateCluster(t *testing.T) {
-	mc := newMultiCluster()
-	ci := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+func TestMultiShardUpdateCanUpdateShard(t *testing.T) {
+	mc := newMultiShard()
+	ci := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
 		ConfigChangeIndex: 1,
 	}
 	nhi := pb.NodeHostInfo{
 		RaftAddress: "a2",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci},
+		ShardInfo:   []*pb.ShardInfo{ci},
 	}
 	mc.update(nhi)
 
 	// higher ConfigChangeIndex will be accepted
-	uci := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+	uci := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          false,
-		Nodes:             map[uint64]string{2: "a2", 3: "a3", 4: "a4", 5: "a5"},
+		Replicas:          map[uint64]string{2: "a2", 3: "a3", 4: "a4", 5: "a5"},
 		ConfigChangeIndex: 2,
 	}
 	unhi := pb.NodeHostInfo{
 		RaftAddress: "a2",
 		LastTick:    200,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{uci},
+		ShardInfo:   []*pb.ShardInfo{uci},
 	}
 	mc.update(unhi)
-	v := mc.Clusters[1]
+	v := mc.Shards[1]
 	if v.ConfigChangeIndex != 2 {
 		t.Errorf("ConfigChangeIndex = %d, want 2", v.ConfigChangeIndex)
 	}
-	if len(v.Nodes) != 4 {
-		t.Errorf("nodes sz = %d, want 4", len(v.Nodes))
+	if len(v.Replicas) != 4 {
+		t.Errorf("replicas sz = %d, want 4", len(v.Replicas))
 	}
 	// node 1 expected to be gone
 	hasNode1 := false
-	for _, n := range v.Nodes {
-		if n.NodeID == 1 {
+	for _, n := range v.Replicas {
+		if n.ReplicaID == 1 {
 			hasNode1 = true
 		}
 	}
@@ -246,41 +246,41 @@ func TestMultiClusterUpdateCanUpdateCluster(t *testing.T) {
 		t.Error("node 1 is not deleted")
 	}
 
-	if v.Nodes[2].Tick != 200 {
-		t.Errorf("tick = %d, want 200", v.Nodes[2].Tick)
+	if v.Replicas[2].Tick != 200 {
+		t.Errorf("tick = %d, want 200", v.Replicas[2].Tick)
 	}
 
 	// lower ConfigChangeIndex will be ignored
-	uci = pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+	uci = &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          false,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2"},
 		ConfigChangeIndex: 1,
 	}
 	unhi = pb.NodeHostInfo{
 		RaftAddress: "a2",
 		LastTick:    200,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{uci},
+		ShardInfo:   []*pb.ShardInfo{uci},
 	}
 	mc.update(unhi)
 	if v.ConfigChangeIndex != 2 {
 		t.Errorf("ConfigChangeIndex = %d, want 2", v.ConfigChangeIndex)
 	}
-	if len(v.Nodes) != 4 {
-		t.Errorf("nodes sz = %d, want 4", len(v.Nodes))
+	if len(v.Replicas) != 4 {
+		t.Errorf("replicas sz = %d, want 4", len(v.Replicas))
 	}
 }
 
-func testMultiClusterTickRegionUpdate(t *testing.T,
+func testMultiShardTickRegionUpdate(t *testing.T,
 	pending bool, incomplete bool) {
-	mc := newMultiCluster()
-	ci := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+	mc := newMultiShard()
+	ci := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
 		ConfigChangeIndex: 1,
 		Pending:           false,
 		Incomplete:        false,
@@ -289,56 +289,56 @@ func testMultiClusterTickRegionUpdate(t *testing.T,
 		RaftAddress: "a2",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci},
+		ShardInfo:   []*pb.ShardInfo{ci},
 	}
 	mc.update(nhi)
 
-	if mc.Clusters[1].Nodes[2].Tick != 100 {
+	if mc.Shards[1].Replicas[2].Tick != 100 {
 		t.Errorf("tick not set")
 	}
-	nhi.ClusterInfo[0].Pending = pending
-	nhi.ClusterInfo[0].Incomplete = incomplete
+	nhi.ShardInfo[0].Pending = pending
+	nhi.ShardInfo[0].Incomplete = incomplete
 	nhi.LastTick = 200
 	nhi.Region = "region-new"
 	mc.update(nhi)
-	if mc.Clusters[1].Nodes[2].Tick != 200 {
+	if mc.Shards[1].Replicas[2].Tick != 200 {
 		t.Errorf("tick not updated")
 	}
 }
 
-func TestMultiClusterTickRegionUpdate(t *testing.T) {
-	testMultiClusterTickRegionUpdate(t, false, false)
-	testMultiClusterTickRegionUpdate(t, false, true)
-	testMultiClusterTickRegionUpdate(t, true, false)
+func TestMultiShardTickRegionUpdate(t *testing.T) {
+	testMultiShardTickRegionUpdate(t, false, false)
+	testMultiShardTickRegionUpdate(t, false, true)
+	testMultiShardTickRegionUpdate(t, true, false)
 }
 
-func TestMultiClusterDeepCopy(t *testing.T) {
-	mc := newMultiCluster()
-	ci := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+func TestMultiShardDeepCopy(t *testing.T) {
+	mc := newMultiShard()
+	ci := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
 		ConfigChangeIndex: 1,
 	}
 	nhi := pb.NodeHostInfo{
 		RaftAddress: "a2",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci},
+		ShardInfo:   []*pb.ShardInfo{ci},
 	}
 	mc.update(nhi)
 	dcmc := mc.deepCopy()
 
-	mc.Clusters[1].Nodes[2].IsLeader = false
-	if !dcmc.Clusters[1].Nodes[2].IsLeader {
-		t.Errorf("is leader = %t, want true", dcmc.Clusters[1].Nodes[2].IsLeader)
+	mc.Shards[1].Replicas[2].IsLeader = false
+	if !dcmc.Shards[1].Replicas[2].IsLeader {
+		t.Errorf("is leader = %t, want true", dcmc.Shards[1].Replicas[2].IsLeader)
 	}
 
 	// restore the value
-	mc.Clusters[1].Nodes[2].IsLeader = true
+	mc.Shards[1].Replicas[2].IsLeader = true
 	if !reflect.DeepEqual(mc, dcmc) {
-		t.Error("Deep copied MultiCluster is not reflect.DeepEqual")
+		t.Error("Deep copied MultiShard is not reflect.DeepEqual")
 	}
 }
 
@@ -354,7 +354,7 @@ func TestNodeFailed(t *testing.T) {
 	}
 
 	for idx, v := range expected {
-		n := node{
+		n := replica{
 			Tick:          v.nodeTick,
 			FirstObserved: v.nodeFirstObserved,
 		}
@@ -378,7 +378,7 @@ func TestNodeWaitingToBeStarted(t *testing.T) {
 	}
 
 	for idx, v := range expected {
-		n := node{
+		n := replica{
 			Tick:          v.nodeTick,
 			FirstObserved: v.nodeFirstObserved,
 		}
@@ -389,7 +389,7 @@ func TestNodeWaitingToBeStarted(t *testing.T) {
 	}
 }
 
-func TestClusterNodesStatus(t *testing.T) {
+func TestShardReplicasStatus(t *testing.T) {
 	base := uint64(100000)
 	expected := []struct {
 		nodeTick          uint64
@@ -403,10 +403,10 @@ func TestClusterNodesStatus(t *testing.T) {
 		{base - nodeHostTTL, 0, false, false},
 	}
 
-	c := &cluster{}
-	c.Nodes = make(map[uint64]*node)
+	c := &shard{}
+	c.Replicas = make(map[uint64]*replica)
 	for idx, v := range expected {
-		n := &node{
+		n := &replica{
 			Tick:          v.nodeTick,
 			FirstObserved: v.nodeFirstObserved,
 		}
@@ -418,27 +418,27 @@ func TestClusterNodesStatus(t *testing.T) {
 			t.Errorf("%d, wst %t, want %t", idx, n.waitingToBeStarted(base), v.wst)
 		}
 
-		c.Nodes[uint64(idx)] = n
+		c.Replicas[uint64(idx)] = n
 	}
 
 	if c.quorum() != 3 {
 		t.Errorf("quorum = %d, want 3", c.quorum())
 	}
-	if len(c.getOkNodes(base)) != 1 {
-		t.Errorf("oknode sz = %d, want 1", len(c.getOkNodes(base)))
+	if len(c.getOkReplicas(base)) != 1 {
+		t.Errorf("oknode sz = %d, want 1", len(c.getOkReplicas(base)))
 	}
-	if len(c.getFailedNodes(base)) != 1 {
-		t.Errorf("failed nodes sz = %d, want 1", len(c.getFailedNodes(base)))
+	if len(c.getFailedReplicas(base)) != 1 {
+		t.Errorf("failed replicas sz = %d, want 1", len(c.getFailedReplicas(base)))
 	}
-	if len(c.getNodesToStart(base)) != 2 {
-		t.Errorf("nodes to start sz = %d, want 2", len(c.getNodesToStart(base)))
+	if len(c.getReplicasToStart(base)) != 2 {
+		t.Errorf("replicas to start sz = %d, want 2", len(c.getReplicasToStart(base)))
 	}
 	if c.available(base) {
 		t.Errorf("available = %t, want false", c.available(base))
 	}
 }
 
-func TestClusterReqair(t *testing.T) {
+func TestShardReqair(t *testing.T) {
 	base := uint64(100000)
 	expected := []struct {
 		nodeTick          uint64
@@ -452,10 +452,10 @@ func TestClusterReqair(t *testing.T) {
 		{base - nodeHostTTL, 0, false, false},
 	}
 
-	c := &cluster{}
-	c.Nodes = make(map[uint64]*node)
+	c := &shard{}
+	c.Replicas = make(map[uint64]*replica)
 	for idx, v := range expected {
-		n := &node{
+		n := &replica{
 			Tick:          v.nodeTick,
 			FirstObserved: v.nodeFirstObserved,
 		}
@@ -467,29 +467,29 @@ func TestClusterReqair(t *testing.T) {
 			t.Errorf("%d, wst %t, want %t", idx, n.waitingToBeStarted(base), v.wst)
 		}
 
-		c.Nodes[uint64(idx)] = n
+		c.Replicas[uint64(idx)] = n
 	}
 
-	mc := &multiCluster{}
-	mc.Clusters = make(map[uint64]*cluster)
-	mc.Clusters[1] = c
-	crl := mc.getClusterForRepair(base)
+	mc := &multiShard{}
+	mc.Shards = make(map[uint64]*shard)
+	mc.Shards[1] = c
+	crl := mc.getShardForRepair(base)
 	if len(crl) != 1 {
-		t.Errorf("cluster repair sz:%d, want 1", len(crl))
+		t.Errorf("shard repair sz:%d, want 1", len(crl))
 	}
 
-	if crl[0].cluster != c {
-		t.Errorf("cluster not pointing to correct struct")
+	if crl[0].shard != c {
+		t.Errorf("shard not pointing to correct struct")
 	}
 
-	if len(crl[0].failedNodes) != 1 {
-		t.Errorf("failed nodes sz = %d, want 1", len(crl[0].failedNodes))
+	if len(crl[0].failedReplicas) != 1 {
+		t.Errorf("failed replicas sz = %d, want 1", len(crl[0].failedReplicas))
 	}
-	if len(crl[0].okNodes) != 1 {
-		t.Errorf("ok nodes sz = %d, want 1", len(crl[0].okNodes))
+	if len(crl[0].okReplicas) != 1 {
+		t.Errorf("ok replicas sz = %d, want 1", len(crl[0].okReplicas))
 	}
-	if len(crl[0].nodesToStart) != 2 {
-		t.Errorf("wst nodes sz = %d, want 2", len(crl[0].nodesToStart))
+	if len(crl[0].replicasToStart) != 2 {
+		t.Errorf("wst replicas sz = %d, want 2", len(crl[0].replicasToStart))
 	}
 
 	cr := crl[0]
@@ -505,7 +505,7 @@ func TestClusterReqair(t *testing.T) {
 	if !cr.createRequired() {
 		t.Errorf("create required = %t, want true", cr.createRequired())
 	}
-	if !cr.hasNodesToStart() {
-		t.Errorf("has node to start = %t, want true", cr.hasNodesToStart())
+	if !cr.hasReplicasToStart() {
+		t.Errorf("has node to start = %t, want true", cr.hasReplicasToStart())
 	}
 }

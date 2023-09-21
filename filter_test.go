@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !dragonboat_monkeytest
 // +build !dragonboat_monkeytest
 
 package drummer
@@ -22,36 +23,36 @@ import (
 
 func getTestnodeHostSpecList() []*nodeHostSpec {
 	n1 := &nodeHostSpec{
-		Address:  "a1",
-		Region:   "region-1",
-		Tick:     100,
-		Clusters: make(map[uint64]struct{}),
+		Address: "a1",
+		Region:  "region-1",
+		Tick:    100,
+		Shards:  make(map[uint64]struct{}),
 	}
-	n1.Clusters[100] = struct{}{}
-	n1.Clusters[200] = struct{}{}
+	n1.Shards[100] = struct{}{}
+	n1.Shards[200] = struct{}{}
 	n2 := &nodeHostSpec{
-		Address:  "a2",
-		Region:   "region-2",
-		Tick:     200,
-		Clusters: make(map[uint64]struct{}),
+		Address: "a2",
+		Region:  "region-2",
+		Tick:    200,
+		Shards:  make(map[uint64]struct{}),
 	}
-	n2.Clusters[200] = struct{}{}
+	n2.Shards[200] = struct{}{}
 	n3 := &nodeHostSpec{
-		Address:  "a3",
-		Region:   "region-2",
-		Tick:     210,
-		Clusters: make(map[uint64]struct{}),
+		Address: "a3",
+		Region:  "region-2",
+		Tick:    210,
+		Shards:  make(map[uint64]struct{}),
 	}
-	n3.Clusters[100] = struct{}{}
-	n3.Clusters[200] = struct{}{}
+	n3.Shards[100] = struct{}{}
+	n3.Shards[200] = struct{}{}
 	n4 := &nodeHostSpec{
-		Address:  "a4",
-		Region:   "region-3",
-		Tick:     300,
-		Clusters: make(map[uint64]struct{}),
+		Address: "a4",
+		Region:  "region-3",
+		Tick:    300,
+		Shards:  make(map[uint64]struct{}),
 	}
-	n4.Clusters[300] = struct{}{}
-	n4.Clusters[200] = struct{}{}
+	n4.Shards[300] = struct{}{}
+	n4.Shards[200] = struct{}{}
 	l := make([]*nodeHostSpec, 0)
 	return append(l, n1, n2, n3, n4)
 }

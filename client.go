@@ -27,31 +27,31 @@ var (
 	ErrInvalidRequest = errors.New("invalid drummer request")
 )
 
-// AddDrummerServer adds a new drummer node with specified nodeID and address
-// to the Drummer cluster.
+// AddDrummerServer adds a new drummer node with specified replicaID and address
+// to the Drummer shard.
 func AddDrummerServer(ctx context.Context, client pb.DrummerClient,
-	nodeID uint64, address string) (*pb.Empty, error) {
+	replicaID uint64, address string) (*pb.Empty, error) {
 	req := &pb.DrummerConfigRequest{
-		NodeId:  nodeID,
-		Address: address,
+		ReplicaId: replicaID,
+		Address:   address,
 	}
 	return client.AddDrummerServer(ctx, req)
 }
 
-// RemoveDrummerServer removes the specified node from the Drummer cluster.
+// RemoveDrummerServer removes the specified node from the Drummer shard.
 func RemoveDrummerServer(ctx context.Context, client pb.DrummerClient,
-	nodeID uint64) (*pb.Empty, error) {
+	replicaID uint64) (*pb.Empty, error) {
 	req := &pb.DrummerConfigRequest{
-		NodeId: nodeID,
+		ReplicaId: replicaID,
 	}
 	return client.RemoveDrummerServer(ctx, req)
 }
 
-// SubmitCreateDrummerChange submits Drummer change used for defining clusters.
+// SubmitCreateDrummerChange submits Drummer change used for defining shards.
 func SubmitCreateDrummerChange(ctx context.Context, client pb.DrummerClient,
-	clusterID uint64, members []uint64, appName string) error {
-	if clusterID == 0 {
-		panic("invalid cluster ID")
+	shardID uint64, members []uint64, appName string) error {
+	if shardID == 0 {
+		panic("invalid shard ID")
 	}
 	if len(appName) == 0 {
 		panic("empty app name")
@@ -60,10 +60,10 @@ func SubmitCreateDrummerChange(ctx context.Context, client pb.DrummerClient,
 		panic("empty members")
 	}
 	change := pb.Change{
-		Type:      pb.Change_CREATE,
-		ClusterId: clusterID,
-		Members:   members,
-		AppName:   appName,
+		Type:    pb.Change_CREATE,
+		ShardId: shardID,
+		Members: members,
+		AppName: appName,
 	}
 	req, err := client.SubmitChange(ctx, &change)
 	if err != nil {
@@ -75,19 +75,19 @@ func SubmitCreateDrummerChange(ctx context.Context, client pb.DrummerClient,
 	return nil
 }
 
-// GetClusterCollection returns known clusters from the Drummer server.
-func GetClusterCollection(ctx context.Context,
-	client pb.DrummerClient) (*pb.ClusterCollection, error) {
-	return client.GetClusters(ctx, &pb.Empty{})
+// GetShardCollection returns known shards from the Drummer server.
+func GetShardCollection(ctx context.Context,
+	client pb.DrummerClient) (*pb.ShardCollection, error) {
+	return client.GetShards(ctx, &pb.Empty{})
 }
 
-// GetClusterStates returns cluster states known to the Drummer server.
-func GetClusterStates(ctx context.Context,
-	client pb.DrummerClient, clusters []uint64) (*pb.ClusterStates, error) {
-	req := &pb.ClusterStateRequest{
-		ClusterIdList: clusters,
+// GetShardStates returns shard states known to the Drummer server.
+func GetShardStates(ctx context.Context,
+	client pb.DrummerClient, shards []uint64) (*pb.ShardStates, error) {
+	req := &pb.ShardStateRequest{
+		ShardIdList: shards,
 	}
-	return client.GetClusterStates(ctx, req)
+	return client.GetShardStates(ctx, req)
 }
 
 // GetNodeHostCollection returns nodehosts known to the Drummer.

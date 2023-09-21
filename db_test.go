@@ -24,24 +24,26 @@ import (
 	"reflect"
 	"testing"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/lni/dragonboat/v4/statemachine"
 	pb "github.com/lni/drummer/v3/drummerpb"
 )
 
 func TestDBCanBeSnapshottedAndRestored(t *testing.T) {
-	ci1 := pb.Cluster{
-		ClusterId: 100,
-		AppName:   "noop",
-		Members:   []uint64{1, 2, 3},
+	ci1 := pb.Shard{
+		ShardId: 100,
+		AppName: "noop",
+		Members: []uint64{1, 2, 3},
 	}
-	ci2 := pb.Cluster{
-		ClusterId: 200,
-		AppName:   "noop",
-		Members:   []uint64{1, 2, 3},
+	ci2 := pb.Shard{
+		ShardId: 200,
+		AppName: "noop",
+		Members: []uint64{1, 2, 3},
 	}
-	clusters := make(map[uint64]*pb.Cluster)
-	clusters[100] = &ci1
-	clusters[200] = &ci2
+	shards := make(map[uint64]*pb.Shard)
+	shards[100] = &ci1
+	shards[200] = &ci2
 	testData := make([]byte, 32)
 	rand.Read(testData)
 	kvMap := make(map[string][]byte)
@@ -49,18 +51,18 @@ func TestDBCanBeSnapshottedAndRestored(t *testing.T) {
 	kvMap["key2"] = []byte("value2")
 	kvMap["key3"] = testData
 	d := &DB{
-		ClusterID:     0,
-		NodeID:        0,
-		Clusters:      clusters,
+		ShardID:       0,
+		ReplicaID:     0,
+		Shards:        shards,
 		KVMap:         kvMap,
-		ClusterImage:  newMultiCluster(),
+		ShardImage:    newMultiShard(),
 		NodeHostImage: newMultiNodeHost(),
 		NodeHostInfo:  make(map[string]pb.NodeHostInfo),
-		Requests:      make(map[string][]pb.NodeHostRequest),
-		Outgoing:      make(map[string][]pb.NodeHostRequest),
+		Requests:      make(map[string][]*pb.NodeHostRequest),
+		Outgoing:      make(map[string][]*pb.NodeHostRequest),
 	}
 	testRequestsCanBeUpdated(t, d)
-	testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t, d)
+	testNodeHostInfoUpdateUpdatesShardAndNodeHostImage(t, d)
 	w := bytes.NewBufferString("")
 	err := d.SaveSnapshot(w, nil, nil)
 	if err != nil {
@@ -87,7 +89,7 @@ func testTickCanBeIncreased(t *testing.T, db statemachine.IStateMachine) {
 	update := pb.Update{
 		Type: pb.Update_TICK,
 	}
-	data, err := update.Marshal()
+	data, err := proto.Marshal(&update)
 	if err != nil {
 		panic(err)
 	}
@@ -127,28 +129,28 @@ func TestTickCanBeIncreased(t *testing.T) {
 	testTickCanBeIncreased(t, db)
 }
 
-func testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t *testing.T,
+func testNodeHostInfoUpdateUpdatesShardAndNodeHostImage(t *testing.T,
 	db statemachine.IStateMachine) {
 	update := pb.Update{
 		Type: pb.Update_TICK,
 	}
-	tickData, err := update.Marshal()
+	tickData, err := proto.Marshal(&update)
 	if err != nil {
 		panic(err)
 	}
-	nhi := pb.NodeHostInfo{
+	nhi := &pb.NodeHostInfo{
 		RaftAddress: "a2",
 		RPCAddress:  "rpca1",
 		Region:      "r1",
-		ClusterInfo: []pb.ClusterInfo{
-			{
-				ClusterId: 1,
-				NodeId:    2,
+		ShardInfo: []*pb.ShardInfo{
+			&pb.ShardInfo{
+				ShardId:   1,
+				ReplicaId: 2,
 			},
-			{
-				ClusterId: 2,
-				NodeId:    3,
-				Nodes:     map[uint64]string{3: "a2", 4: "a1", 5: "a3"},
+			&pb.ShardInfo{
+				ShardId:   2,
+				ReplicaId: 3,
+				Replicas:  map[uint64]string{3: "a2", 4: "a1", 5: "a3"},
 			},
 		},
 	}
@@ -156,7 +158,7 @@ func testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t *testing.T,
 		Type:         pb.Update_NODEHOST_INFO,
 		NodehostInfo: nhi,
 	}
-	data, err := update.Marshal()
+	data, err := proto.Marshal(&update)
 	if err != nil {
 		panic(err)
 	}
@@ -169,10 +171,10 @@ func testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t *testing.T,
 	if _, err := db.Update(statemachine.Entry{Cmd: data}); err != nil {
 		t.Fatalf("%v", err)
 	}
-	clusterInfo := db.(*DB).ClusterImage
+	shardInfo := db.(*DB).ShardImage
 	nodehostInfo := db.(*DB).NodeHostImage
-	if len(clusterInfo.Clusters) != 2 {
-		t.Errorf("cluster info not updated")
+	if len(shardInfo.Shards) != 2 {
+		t.Errorf("shard info not updated")
 	}
 	if len(nodehostInfo.Nodehosts) != 1 {
 		t.Errorf("nodehost info not updated")
@@ -184,14 +186,14 @@ func testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t *testing.T,
 	if nhs.Tick != 2*tickIntervalSecond {
 		t.Errorf("unexpected nodehost tick value")
 	}
-	ci, ok := clusterInfo.Clusters[2]
+	ci, ok := shardInfo.Shards[2]
 	if !ok {
-		t.Errorf("cluster not found")
+		t.Errorf("shard not found")
 	}
-	if ci.ClusterID != 2 {
-		t.Errorf("unexpected cluster id value")
+	if ci.ShardID != 2 {
+		t.Errorf("unexpected shard id value")
 	}
-	n, ok := ci.Nodes[3]
+	n, ok := ci.Replicas[3]
 	if !ok {
 		t.Errorf("node not found, %v", ci)
 	}
@@ -200,14 +202,14 @@ func testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t *testing.T,
 	}
 }
 
-func TestNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t *testing.T) {
+func TestNodeHostInfoUpdateUpdatesShardAndNodeHostImage(t *testing.T) {
 	db := NewDB(0, 0)
-	testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t, db)
+	testNodeHostInfoUpdateUpdatesShardAndNodeHostImage(t, db)
 }
 
 func testTickValue(t *testing.T, db statemachine.IStateMachine,
-	addr string, clusterID uint64, nodeID uint64, tick uint64) {
-	clusterInfo := db.(*DB).ClusterImage
+	addr string, shardID uint64, nodeID uint64, tick uint64) {
+	shardInfo := db.(*DB).ShardImage
 	nodehostInfo := db.(*DB).NodeHostImage
 	nhs, ok := nodehostInfo.Nodehosts[addr]
 	if !ok {
@@ -216,11 +218,11 @@ func testTickValue(t *testing.T, db statemachine.IStateMachine,
 	if nhs.Tick != tick*tickIntervalSecond {
 		t.Errorf("unexpected nodehost tick value, got %d, want %d", nhs.Tick, tick)
 	}
-	ci, ok := clusterInfo.Clusters[clusterID]
+	ci, ok := shardInfo.Shards[shardID]
 	if !ok {
-		t.Fatalf("cluster %d not found", clusterID)
+		t.Fatalf("shard %d not found", shardID)
 	}
-	n, ok := ci.Nodes[nodeID]
+	n, ok := ci.Replicas[nodeID]
 	if !ok {
 		t.Fatalf("node %d not found", nodeID)
 	}
@@ -234,7 +236,7 @@ func TestTickUpdatedAsExpected(t *testing.T) {
 	update := pb.Update{
 		Type: pb.Update_TICK,
 	}
-	tickData, err := update.Marshal()
+	tickData, err := proto.Marshal(&update)
 	if err != nil {
 		panic(err)
 	}
@@ -242,19 +244,19 @@ func TestTickUpdatedAsExpected(t *testing.T) {
 		RaftAddress: "a2",
 		RPCAddress:  "rpca1",
 		Region:      "r1",
-		ClusterInfo: []pb.ClusterInfo{
-			{
-				ClusterId: 1,
-				NodeId:    2,
-				Nodes:     map[uint64]string{2: "a2", 3: "a1", 4: "a3"},
+		ShardInfo: []*pb.ShardInfo{
+			&pb.ShardInfo{
+				ShardId:   1,
+				ReplicaId: 2,
+				Replicas:  map[uint64]string{2: "a2", 3: "a1", 4: "a3"},
 			},
 		},
 	}
 	update = pb.Update{
 		Type:         pb.Update_NODEHOST_INFO,
-		NodehostInfo: nhi,
+		NodehostInfo: &nhi,
 	}
-	nhiData, err := update.Marshal()
+	nhiData, err := proto.Marshal(&update)
 	if err != nil {
 		panic(err)
 	}
@@ -287,7 +289,7 @@ func TestTickUpdatedAsExpected(t *testing.T) {
 func TestNodeHostInfoUpdateMovesRequests(t *testing.T) {
 	db := NewDB(0, 0)
 	testRequestsCanBeUpdated(t, db)
-	testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t, db)
+	testNodeHostInfoUpdateUpdatesShardAndNodeHostImage(t, db)
 	reqs := db.(*DB).Requests
 	if len(reqs) != 1 {
 		t.Errorf("unexpected reqs size")
@@ -317,25 +319,28 @@ func TestNodeHostInfoUpdateMovesRequests(t *testing.T) {
 }
 
 func testRequestsCanBeUpdated(t *testing.T, db statemachine.IStateMachine) {
-	r1 := pb.NodeHostRequest{
-		RaftAddress:       "a1",
-		InstantiateNodeId: 1,
+	r1 := &pb.NodeHostRequest{
+		Change:               &pb.Request{},
+		RaftAddress:          "a1",
+		InstantiateReplicaId: 1,
 	}
-	r2 := pb.NodeHostRequest{
-		RaftAddress:       "a2",
-		InstantiateNodeId: 2,
+	r2 := &pb.NodeHostRequest{
+		Change:               &pb.Request{},
+		RaftAddress:          "a2",
+		InstantiateReplicaId: 2,
 	}
-	r3 := pb.NodeHostRequest{
-		RaftAddress:       "a2",
-		InstantiateNodeId: 3,
+	r3 := &pb.NodeHostRequest{
+		Change:               &pb.Request{},
+		RaftAddress:          "a2",
+		InstantiateReplicaId: 3,
 	}
 	update := pb.Update{
 		Type: pb.Update_REQUESTS,
-		Requests: pb.NodeHostRequestCollection{
-			Requests: []pb.NodeHostRequest{r1, r2, r3},
+		Requests: &pb.NodeHostRequestCollection{
+			Requests: []*pb.NodeHostRequest{r1, r2, r3},
 		},
 	}
-	data, err := update.Marshal()
+	data, err := proto.Marshal(&update)
 	if err != nil {
 		panic(err)
 	}
@@ -375,22 +380,22 @@ func TestRequestLookup(t *testing.T) {
 		Type:    pb.LookupRequest_REQUESTS,
 		Address: "a2",
 	}
-	data, err := lookup.Marshal()
+	data, err := proto.Marshal(&lookup)
 	if err != nil {
 		panic(err)
 	}
 	result, _ := db.Lookup(data)
 	var resp pb.LookupResponse
-	if err := resp.Unmarshal(result.([]byte)); err != nil {
+	if err := proto.Unmarshal(result.([]byte), &resp); err != nil {
 		panic(err)
 	}
 	if len(resp.Requests.Requests) != 0 {
 		t.Errorf("unexpected requests count, want 0, got %d",
 			len(resp.Requests.Requests))
 	}
-	testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t, db)
+	testNodeHostInfoUpdateUpdatesShardAndNodeHostImage(t, db)
 	result, _ = db.Lookup(data)
-	if err := resp.Unmarshal(result.([]byte)); err != nil {
+	if err := proto.Unmarshal(result.([]byte), &resp); err != nil {
 		panic(err)
 	}
 	reqs := resp.Requests.Requests
@@ -398,7 +403,7 @@ func TestRequestLookup(t *testing.T) {
 		t.Errorf("unexpected requests count, want 2, got %d",
 			len(resp.Requests.Requests))
 	}
-	if reqs[0].InstantiateNodeId != 2 || reqs[1].InstantiateNodeId != 3 {
+	if reqs[0].InstantiateReplicaId != 2 || reqs[1].InstantiateReplicaId != 3 {
 		t.Errorf("requests not ordered in the expected way")
 	}
 }
@@ -409,32 +414,32 @@ func TestSchedulerContextLookup(t *testing.T) {
 		Region: []string{"v1", "v2"},
 		Count:  []uint64{123, 345},
 	}
-	regionData, err := regions.Marshal()
+	regionData, err := proto.Marshal(&regions)
 	if err != nil {
 		panic(err)
 	}
 	var kv pb.KV
 	kv.Value = string(regionData)
-	rd, err := kv.Marshal()
+	rd, err := proto.Marshal(&kv)
 	if err != nil {
 		panic(err)
 	}
 	db.(*DB).KVMap[regionsKey] = rd
-	db.(*DB).Clusters[100] = &pb.Cluster{
-		ClusterId: 100,
+	db.(*DB).Shards[100] = &pb.Shard{
+		ShardId: 100,
 	}
-	db.(*DB).Clusters[200] = &pb.Cluster{
-		ClusterId: 200,
+	db.(*DB).Shards[200] = &pb.Shard{
+		ShardId: 200,
 	}
-	db.(*DB).Clusters[300] = &pb.Cluster{
-		ClusterId: 300,
+	db.(*DB).Shards[300] = &pb.Shard{
+		ShardId: 300,
 	}
 	testRequestsCanBeUpdated(t, db)
-	testNodeHostInfoUpdateUpdatesClusterAndNodeHostImage(t, db)
+	testNodeHostInfoUpdateUpdatesShardAndNodeHostImage(t, db)
 	lookup := pb.LookupRequest{
 		Type: pb.LookupRequest_SCHEDULER_CONTEXT,
 	}
-	data, err := lookup.Marshal()
+	data, err := proto.Marshal(&lookup)
 	if err != nil {
 		panic(err)
 	}
@@ -446,10 +451,10 @@ func TestSchedulerContextLookup(t *testing.T) {
 	if sc.Tick != 2*tickIntervalSecond {
 		t.Errorf("tick %d, want 2", sc.Tick)
 	}
-	clusterInfo := sc.ClusterImage
+	shardInfo := sc.ShardImage
 	nodehostInfo := sc.NodeHostImage
-	if len(sc.ClusterImage.Clusters) != 2 {
-		t.Fatalf("cluster info not updated, sz: %d", len(clusterInfo.Clusters))
+	if len(sc.ShardImage.Shards) != 2 {
+		t.Fatalf("shard info not updated, sz: %d", len(shardInfo.Shards))
 	}
 	if len(nodehostInfo.Nodehosts) != 1 {
 		t.Fatalf("nodehost info not updated")
@@ -461,37 +466,37 @@ func TestSchedulerContextLookup(t *testing.T) {
 	if nhs.Tick != 2*tickIntervalSecond {
 		t.Errorf("unexpected nodehost tick value")
 	}
-	ci, ok := clusterInfo.Clusters[2]
+	ci, ok := shardInfo.Shards[2]
 	if !ok {
-		t.Fatalf("cluster not found")
+		t.Fatalf("shard not found")
 	}
-	if ci.ClusterID != 2 {
-		t.Errorf("unexpected cluster id value")
+	if ci.ShardID != 2 {
+		t.Errorf("unexpected shard id value")
 	}
-	_, ok = ci.Nodes[3]
+	_, ok = ci.Replicas[3]
 	if !ok {
 		t.Fatalf("node not found, %v", ci)
 	}
 	if len(sc.Regions.Region) != 2 || len(sc.Regions.Count) != 2 {
 		t.Errorf("regions not returned")
 	}
-	if len(sc.Clusters) != 3 {
-		t.Errorf("clusters not returned")
+	if len(sc.Shards) != 3 {
+		t.Errorf("shards not returned")
 	}
 }
 
-func TestClusterCanBeUpdatedAndLookedUp(t *testing.T) {
-	change := pb.Change{
-		Type:      pb.Change_CREATE,
-		ClusterId: 123,
-		Members:   []uint64{1, 2, 3},
-		AppName:   "noop",
+func TestShardCanBeUpdatedAndLookedUp(t *testing.T) {
+	change := &pb.Change{
+		Type:    pb.Change_CREATE,
+		ShardId: 123,
+		Members: []uint64{1, 2, 3},
+		AppName: "noop",
 	}
 	du := pb.Update{
-		Type:   pb.Update_CLUSTER,
+		Type:   pb.Update_SHARD,
 		Change: change,
 	}
-	data, err := du.Marshal()
+	data, err := proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
@@ -503,11 +508,11 @@ func TestClusterCanBeUpdatedAndLookedUp(t *testing.T) {
 	}
 	// use the same input to update the drummer db again
 	code, _ = d.Update(statemachine.Entry{Cmd: data})
-	if code.Value != ClusterExists {
-		t.Errorf("code %d, want %d", code, ClusterExists)
+	if code.Value != ShardExists {
+		t.Errorf("code %d, want %d", code, ShardExists)
 	}
 	// set the bootstrapped flag
-	bkv := pb.KV{
+	bkv := &pb.KV{
 		Key:       bootstrappedKey,
 		Value:     "bootstrapped",
 		Finalized: true,
@@ -516,7 +521,7 @@ func TestClusterCanBeUpdatedAndLookedUp(t *testing.T) {
 		Type:     pb.Update_KV,
 		KvUpdate: bkv,
 	}
-	data, err = du.Marshal()
+	data, err = proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
@@ -530,22 +535,22 @@ func TestClusterCanBeUpdatedAndLookedUp(t *testing.T) {
 	if code.Value != DBBootstrapped {
 		t.Errorf("code %d, want %d", code, DBBootstrapped)
 	}
-	if len(d.(*DB).Clusters) != 1 {
-		t.Fatalf("failed to create cluster")
+	if len(d.(*DB).Shards) != 1 {
+		t.Fatalf("failed to create shard")
 	}
-	c := d.(*DB).Clusters[123]
-	cluster := &pb.Cluster{
-		ClusterId: 123,
-		AppName:   "noop",
-		Members:   []uint64{1, 2, 3},
+	c := d.(*DB).Shards[123]
+	shard := &pb.Shard{
+		ShardId: 123,
+		AppName: "noop",
+		Members: []uint64{1, 2, 3},
 	}
-	if !reflect.DeepEqual(cluster, c) {
-		t.Errorf("cluster recs not equal, \n%v\n%v", cluster, c)
+	if !reflect.DeepEqual(shard, c) {
+		t.Errorf("shard recs not equal, \n%v\n%v", shard, c)
 	}
 	req := pb.LookupRequest{
-		Type: pb.LookupRequest_CLUSTER,
+		Type: pb.LookupRequest_SHARD,
 	}
-	data, err = req.Marshal()
+	data, err = proto.Marshal(&req)
 	if err != nil {
 		t.Fatalf("failed to marshal lookup request")
 	}
@@ -554,16 +559,16 @@ func TestClusterCanBeUpdatedAndLookedUp(t *testing.T) {
 		t.Fatalf("lookup failed %v", err)
 	}
 	var resp pb.LookupResponse
-	err = resp.Unmarshal(result.([]byte))
+	err = proto.Unmarshal(result.([]byte), &resp)
 	if err != nil {
 		t.Fatalf("failed to unmarshal")
 	}
-	if len(resp.Clusters) != 1 {
-		t.Fatalf("not getting cluster back")
+	if len(resp.Shards) != 1 {
+		t.Fatalf("not getting shard back")
 	}
-	resqc := resp.Clusters[0]
-	if resqc.ClusterId != 123 {
-		t.Errorf("cluster id %d, want 123", resqc.ClusterId)
+	resqc := resp.Shards[0]
+	if resqc.ShardId != 123 {
+		t.Errorf("shard id %d, want 123", resqc.ShardId)
 	}
 	if len(resqc.Members) != 3 {
 		t.Errorf("len(members)=%d, want 3", len(resqc.Members))
@@ -574,7 +579,7 @@ func TestClusterCanBeUpdatedAndLookedUp(t *testing.T) {
 }
 
 func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
-	kv := pb.KV{
+	kv := &pb.KV{
 		Key:       "test-key",
 		Value:     "test-data",
 		Finalized: true,
@@ -583,7 +588,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 		Type:     pb.Update_KV,
 		KvUpdate: kv,
 	}
-	data, err := du.Marshal()
+	data, err := proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
@@ -612,7 +617,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 	}
 	// v is the marshaled how KV rec
 	var kvrec pb.KV
-	if err := kvrec.Unmarshal([]byte(v)); err != nil {
+	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
 	if kvrec.Value != "test-data" {
@@ -620,7 +625,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 	}
 	// try to update the finalized value
 	du.KvUpdate.Value = "test-data-2"
-	data, err = du.Marshal()
+	data, err = proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
@@ -632,7 +637,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 		t.Errorf("kv map value not expected")
 	}
 	// finalized value not changed
-	if err := kvrec.Unmarshal([]byte(v)); err != nil {
+	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
 	if kvrec.Value != "test-data" {
@@ -641,7 +646,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForFinalizedValue(t *testing.T) {
 }
 
 func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
-	kv := pb.KV{
+	kv := &pb.KV{
 		Key:        "test-key",
 		Value:      "test-data",
 		InstanceId: 1000,
@@ -650,7 +655,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 		Type:     pb.Update_KV,
 		KvUpdate: kv,
 	}
-	data, err := du.Marshal()
+	data, err := proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
@@ -668,7 +673,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	// with a different instance id, the value can not be updated
 	du.KvUpdate.Value = "test-data-2"
 	du.KvUpdate.InstanceId = 2000
-	data, err = du.Marshal()
+	data, err = proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
@@ -681,7 +686,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	}
 	// finalized value not changed
 	var kvrec pb.KV
-	if err := kvrec.Unmarshal([]byte(v)); err != nil {
+	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
 	if kvrec.Value != "test-data" {
@@ -689,7 +694,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	}
 	// with the same instance id, the value should be updated
 	du.KvUpdate.InstanceId = 1000
-	data, err = du.Marshal()
+	data, err = proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
@@ -701,7 +706,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 		t.Errorf("kv map value not expected")
 	}
 	// finalized value not changed
-	if err := kvrec.Unmarshal([]byte(v)); err != nil {
+	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
 	if kvrec.Value != "test-data-2" {
@@ -712,7 +717,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	du.KvUpdate.OldInstanceId = 3000
 	du.KvUpdate.InstanceId = 0
 	du.KvUpdate.Value = "test-data-3"
-	data, err = du.Marshal()
+	data, err = proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
@@ -724,7 +729,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 		t.Errorf("kv map value not expected")
 	}
 	// finalized value not changed
-	if err := kvrec.Unmarshal([]byte(v)); err != nil {
+	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
 	if kvrec.Value != "test-data-2" {
@@ -735,7 +740,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 	du.KvUpdate.OldInstanceId = 1000
 	du.KvUpdate.InstanceId = 0
 	du.KvUpdate.Value = "test-data-3"
-	data, err = du.Marshal()
+	data, err = proto.Marshal(&du)
 	if err != nil {
 		t.Fatalf("failed to marshal")
 	}
@@ -747,7 +752,7 @@ func TestKVMapCanBeUpdatedAndLookedUpForNotFinalizedValue(t *testing.T) {
 		t.Errorf("kv map value not expected")
 	}
 	// finalized value not changed
-	if err := kvrec.Unmarshal([]byte(v)); err != nil {
+	if err := proto.Unmarshal([]byte(v), &kvrec); err != nil {
 		panic(err)
 	}
 	if kvrec.Value != "test-data-3" {
@@ -781,22 +786,22 @@ func TestLaunchDeadlineIsChecked(t *testing.T) {
 
 func TestLaunchRequestSetsTheLaunchFlag(t *testing.T) {
 	db := NewDB(0, 1)
-	r1 := pb.NodeHostRequest{
-		RaftAddress:       "a1",
-		InstantiateNodeId: 1,
-		Join:              false,
-		Restore:           false,
-		Change: pb.Request{
+	r1 := &pb.NodeHostRequest{
+		RaftAddress:          "a1",
+		InstantiateReplicaId: 1,
+		Join:                 false,
+		Restore:              false,
+		Change: &pb.Request{
 			Type: pb.Request_CREATE,
 		},
 	}
 	update := pb.Update{
 		Type: pb.Update_REQUESTS,
-		Requests: pb.NodeHostRequestCollection{
-			Requests: []pb.NodeHostRequest{r1},
+		Requests: &pb.NodeHostRequestCollection{
+			Requests: []*pb.NodeHostRequest{r1},
 		},
 	}
-	data, err := update.Marshal()
+	data, err := proto.Marshal(&update)
 	if err != nil {
 		panic(err)
 	}
@@ -824,39 +829,39 @@ func TestLaunchRequestSetsTheLaunchFlag(t *testing.T) {
 
 func TestLaunchDeadlineIsClearedOnceAllNodesAreLaunched(t *testing.T) {
 	db := NewDB(0, 1)
-	db.(*DB).Clusters[1] = nil
+	db.(*DB).Shards[1] = nil
 	db.(*DB).LaunchDeadline = 100
-	ci1 := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            1,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2"},
+	ci1 := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         1,
+		Replicas:          map[uint64]string{1: "a1", 2: "a2"},
 		ConfigChangeIndex: 3,
 	}
-	u1 := pb.Update{
-		NodehostInfo: pb.NodeHostInfo{
+	u1 := &pb.Update{
+		NodehostInfo: &pb.NodeHostInfo{
 			RaftAddress: "a1",
-			ClusterInfo: []pb.ClusterInfo{ci1},
+			ShardInfo:   []*pb.ShardInfo{ci1},
 		},
 		Type: pb.Update_NODEHOST_INFO,
 	}
-	data1, err := u1.Marshal()
+	data1, err := proto.Marshal(u1)
 	if err != nil {
 		panic(err)
 	}
-	ci2 := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2"},
+	ci2 := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
+		Replicas:          map[uint64]string{1: "a1", 2: "a2"},
 		ConfigChangeIndex: 3,
 	}
 	u2 := pb.Update{
-		NodehostInfo: pb.NodeHostInfo{
+		NodehostInfo: &pb.NodeHostInfo{
 			RaftAddress: "a2",
-			ClusterInfo: []pb.ClusterInfo{ci2},
+			ShardInfo:   []*pb.ShardInfo{ci2},
 		},
 		Type: pb.Update_NODEHOST_INFO,
 	}
-	data2, err := u2.Marshal()
+	data2, err := proto.Marshal(&u2)
 	if err != nil {
 		panic(err)
 	}
@@ -864,9 +869,9 @@ func TestLaunchDeadlineIsClearedOnceAllNodesAreLaunched(t *testing.T) {
 	if _, err := db.Update(statemachine.Entry{Cmd: data1}); err != nil {
 		t.Fatalf("%v", err)
 	}
-	m := db.(*DB).getLaunchedClusters()
+	m := db.(*DB).getLaunchedShards()
 	if len(m) != 0 {
-		t.Fatalf("launched cluster is not 0")
+		t.Fatalf("launched shard is not 0")
 	}
 	if db.(*DB).LaunchDeadline != 100 {
 		t.Errorf("deadline is not cleared")
@@ -874,9 +879,9 @@ func TestLaunchDeadlineIsClearedOnceAllNodesAreLaunched(t *testing.T) {
 	if _, err := db.Update(statemachine.Entry{Cmd: data2}); err != nil {
 		t.Fatalf("%v", err)
 	}
-	m = db.(*DB).getLaunchedClusters()
+	m = db.(*DB).getLaunchedShards()
 	if len(m) != 1 {
-		t.Fatalf("launched cluster is not 1")
+		t.Fatalf("launched shard is not 1")
 	}
 	if db.(*DB).LaunchDeadline != 0 {
 		t.Errorf("deadline is not cleared")

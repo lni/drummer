@@ -71,7 +71,7 @@ func (c *sessionUser) getSession(ctx context.Context) *client.Session {
 	if c.session == nil {
 		rctx, cancel := context.WithTimeout(ctx,
 			time.Duration(sessionTimeoutSecond)*time.Second)
-		cs, err := c.nh.SyncGetSession(rctx, defaultClusterID)
+		cs, err := c.nh.SyncGetSession(rctx, defaultShardID)
 		cancel()
 		if err != nil {
 			return nil
@@ -124,7 +124,7 @@ func NewDrummer(nh *dragonboat.NodeHost, grpcHost string) *Drummer {
 	}
 	randSrc := random.NewLockedRand()
 	server := newDrummerServer(nh, randSrc)
-	config := GetClusterConfig()
+	config := GetShardConfig()
 	stopper := syncutil.NewStopper()
 	d := Drummer{
 		nh:              nh,
@@ -180,25 +180,25 @@ func (d *Drummer) drummerWorker() {
 	d.drummerMain()
 }
 
-// GetClusterConfig returns the configuration used by Raft clusters managed
+// GetShardConfig returns the configuration used by Raft clusters managed
 // by the drummer server.
-func GetClusterConfig() pb.Config {
+func GetShardConfig() pb.Config {
 	fpList := make([]string, 0)
 	for _, dir := range envutil.GetConfigDirs() {
 		fp := filepath.Join(dir, configFilename)
 		fpList = append(fpList, fp)
 	}
 
-	return getClusterConfig(fpList)
+	return getShardConfig(fpList)
 }
 
-// GetClusterConfigFromFile returns the DrummerConfig read from the specified
+// GetShardConfigFromFile returns the DrummerConfig read from the specified
 // configuration file.
-func GetClusterConfigFromFile(fp string) pb.Config {
-	return getClusterConfig([]string{fp})
+func GetShardConfigFromFile(fp string) pb.Config {
+	return getShardConfig([]string{fp})
 }
 
-func getClusterConfig(fpList []string) pb.Config {
+func getShardConfig(fpList []string) pb.Config {
 	directories := envutil.GetConfigDirs()
 	for _, dir := range directories {
 		fp := filepath.Join(dir, configFilename)
@@ -224,7 +224,7 @@ func getClusterConfig(fpList []string) pb.Config {
 		return cc
 	}
 	plog.Warningf("no drummer config file, using default values")
-	return getDefaultClusterConfig()
+	return getDefaultShardConfig()
 }
 
 func (d *Drummer) setDeploymentID() {
@@ -349,13 +349,13 @@ func (d *Drummer) tick() (uint64, error) {
 	return tick.Value, nil
 }
 
-func (d *Drummer) updateRequests(reqs []pb.NodeHostRequest) (uint64, error) {
+func (d *Drummer) updateRequests(reqs []*pb.NodeHostRequest) (uint64, error) {
 	if len(reqs) == 0 {
 		return 0, nil
 	}
 	update := pb.Update{
 		Type: pb.Update_REQUESTS,
-		Requests: pb.NodeHostRequestCollection{
+		Requests: &pb.NodeHostRequestCollection{
 			Requests: reqs,
 		},
 	}
@@ -422,8 +422,8 @@ func (d *Drummer) drummerMain() {
 	plog.Debugf("drummer's main loop stopped, nh addr: %s", d.nh.RaftAddress())
 }
 
-func (d *Drummer) schedule(ctx context.Context) []pb.NodeHostRequest {
-	requests := make([]pb.NodeHostRequest, 0)
+func (d *Drummer) schedule(ctx context.Context) []*pb.NodeHostRequest {
+	requests := make([]*pb.NodeHostRequest, 0)
 	launched, err := d.server.getLaunched(ctx)
 	if err == context.Canceled {
 		return nil
@@ -437,7 +437,7 @@ func (d *Drummer) schedule(ctx context.Context) []pb.NodeHostRequest {
 	// DrummberDB indicates there is no launched cluster
 	// we don't remember ever launched anything
 	// there is no cluster running to the best knowledge of the Drummer.
-	if !launched && !d.scheduler.hasRunningCluster() {
+	if !launched && !d.scheduler.hasRunningShard() {
 		plog.Infof("going to call launch clusters")
 		reqs, err := d.scheduler.launch()
 		if err != nil {
@@ -447,15 +447,15 @@ func (d *Drummer) schedule(ctx context.Context) []pb.NodeHostRequest {
 		return reqs
 	}
 	// see whether we can repair clusters
-	reqs, err := d.maintainClusters()
+	reqs, err := d.maintainShards()
 	if err != nil {
-		plog.Warningf("maintainClusters returned %v", err)
+		plog.Warningf("maintainShards returned %v", err)
 		return nil
 	}
 	return append(requests, reqs...)
 }
 
-func (d *Drummer) maintainClusters() ([]pb.NodeHostRequest, error) {
+func (d *Drummer) maintainShards() ([]*pb.NodeHostRequest, error) {
 	// TODO:
 	// need to look into problem of whether recently repaired clusters should be
 	// restored. seem to be okay to restore them as false positive ops are going
@@ -464,24 +464,24 @@ func (d *Drummer) maintainClusters() ([]pb.NodeHostRequest, error) {
 	// significantly affect performance.
 	plog.Debugf("drummer %s is the leader, running maintain clusters now",
 		d.nh.RaftAddress())
-	requests := make([]pb.NodeHostRequest, 0)
-	restoredClusters := make(map[uint64]struct{})
+	requests := make([]*pb.NodeHostRequest, 0)
+	restoredShards := make(map[uint64]struct{})
 	reqs, err := d.scheduler.restore()
 	if err != nil {
 		return nil, err
 	}
 	for _, req := range reqs {
-		restoredClusters[req.Change.ClusterId] = struct{}{}
+		restoredShards[req.Change.ShardId] = struct{}{}
 	}
 	requests = append(requests, reqs...)
 	// repair clusters?
-	reqs, err = d.scheduler.repair(restoredClusters)
+	reqs, err = d.scheduler.repair(restoredShards)
 	if err != nil {
 		return nil, err
 	}
 	requests = append(requests, reqs...)
 	// kill zombies
-	reqs = d.scheduler.killZombieNodes()
+	reqs = d.scheduler.killZombieReplicas()
 	requests = append(requests, reqs...)
 	for _, req := range requests {
 		validateNodeHostRequest(req)
@@ -491,7 +491,7 @@ func (d *Drummer) maintainClusters() ([]pb.NodeHostRequest, error) {
 
 // FIXME:
 // fix these hard coded values
-func getDefaultClusterConfig() pb.Config {
+func getDefaultShardConfig() pb.Config {
 	return pb.Config{
 		ElectionRTT:        50,
 		HeartbeatRTT:       5,

@@ -19,17 +19,17 @@ type nodeHostFilter interface {
 }
 
 type basicFilter struct {
-	clusterID uint64
+	shardID uint64
 }
 
-func newBasicFilter(clusterID uint64) *basicFilter {
-	return &basicFilter{clusterID: clusterID}
+func newBasicFilter(shardID uint64) *basicFilter {
+	return &basicFilter{shardID: shardID}
 }
 
 func (f *basicFilter) filter(input []*nodeHostSpec) []*nodeHostSpec {
 	result := make([]*nodeHostSpec, 0)
 	for _, v := range input {
-		if _, ok := v.Clusters[f.clusterID]; !ok {
+		if _, ok := v.Shards[f.shardID]; !ok {
 			result = append(result, v)
 		}
 	}
@@ -95,10 +95,10 @@ type defaultFilter struct {
 	cf *combinedFilter
 }
 
-func newDrummerFilter(clusterID uint64, currentTick uint64,
+func newDrummerFilter(shardID uint64, currentTick uint64,
 	allowedTickGap uint64) *defaultFilter {
 	lf := newLiveFilter(currentTick, allowedTickGap)
-	bf := newBasicFilter(clusterID)
+	bf := newBasicFilter(shardID)
 	cf := newCombinedFilter(lf, bf)
 	return &defaultFilter{cf: cf}
 }
@@ -111,10 +111,10 @@ type defaultRegionFilter struct {
 	cf *combinedFilter
 }
 
-func newDrummerRegionFilter(region string, clusterID uint64, currentTick uint64,
+func newDrummerRegionFilter(region string, shardID uint64, currentTick uint64,
 	allowedTickGap uint64) *defaultRegionFilter {
 	lf := newLiveFilter(currentTick, allowedTickGap)
-	bf := newBasicFilter(clusterID)
+	bf := newBasicFilter(shardID)
 	rf := newRegionFilter(region)
 	cf := newCombinedFilter(lf, bf, rf)
 	return &defaultRegionFilter{cf: cf}

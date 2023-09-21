@@ -20,13 +20,12 @@ import (
 )
 
 type nodeHostSpec struct {
-	Address          string
-	RPCAddress       string
-	Region           string
-	Tick             uint64
-	PersistentLog    []pb.LogInfo
-	Clusters         map[uint64]struct{}
-	persistentLogMap map[pb.LogInfo]struct{}
+	Address       string
+	RPCAddress    string
+	Region        string
+	Tick          uint64
+	PersistentLog []*pb.LogInfo
+	Shards        map[uint64]struct{}
 }
 
 func (spec *nodeHostSpec) deepCopy() *nodeHostSpec {
@@ -35,32 +34,22 @@ func (spec *nodeHostSpec) deepCopy() *nodeHostSpec {
 		Region:  spec.Region,
 		Tick:    spec.Tick,
 	}
-	ns.PersistentLog = make([]pb.LogInfo, 0)
+	ns.PersistentLog = make([]*pb.LogInfo, 0)
 	ns.PersistentLog = append(ns.PersistentLog, spec.PersistentLog...)
-	ns.Clusters = make(map[uint64]struct{})
-	for k, v := range spec.Clusters {
-		ns.Clusters[k] = v
+	ns.Shards = make(map[uint64]struct{})
+	for k, v := range spec.Shards {
+		ns.Shards[k] = v
 	}
 	return ns
 }
 
-func (spec *nodeHostSpec) toPersistentLogMap() {
-	if spec.persistentLogMap == nil {
-		spec.persistentLogMap = make(map[pb.LogInfo]struct{})
-		for _, v := range spec.PersistentLog {
-			spec.persistentLogMap[v] = struct{}{}
+func (spec *nodeHostSpec) hasLog(shardID uint64, replicaID uint64) bool {
+	for _, v := range spec.PersistentLog {
+		if v.ShardId == shardID && v.ReplicaId == replicaID {
+			return true
 		}
 	}
-}
-
-func (spec *nodeHostSpec) hasLog(clusterID uint64, nodeID uint64) bool {
-	p := pb.LogInfo{
-		ClusterId: clusterID,
-		NodeId:    nodeID,
-	}
-	spec.toPersistentLogMap()
-	_, ok := spec.persistentLogMap[p]
-	return ok
+	return false
 }
 
 func (spec *nodeHostSpec) available(currentTick uint64) bool {
@@ -89,11 +78,11 @@ func (m *multiNodeHost) update(nhi pb.NodeHostInfo) {
 	}
 }
 
-func (m *multiNodeHost) syncClusterInfo(mc *multiCluster) {
-	for cid, cluster := range mc.Clusters {
-		for _, node := range cluster.Nodes {
+func (m *multiNodeHost) syncShardInfo(mc *multiShard) {
+	for cid, shard := range mc.Shards {
+		for _, node := range shard.Replicas {
 			if spec, ok := m.Nodehosts[node.Address]; ok {
-				spec.Clusters[cid] = struct{}{}
+				spec.Shards[cid] = struct{}{}
 			}
 		}
 	}
@@ -123,13 +112,13 @@ func (m *multiNodeHost) toNodeHostSpec(nhi pb.NodeHostInfo) *nodeHostSpec {
 		Region:     nhi.Region,
 		Tick:       nhi.LastTick,
 	}
-	n.PersistentLog = make([]pb.LogInfo, 0)
-	n.Clusters = make(map[uint64]struct{})
+	n.PersistentLog = make([]*pb.LogInfo, 0)
+	n.Shards = make(map[uint64]struct{})
 	if nhi.PlogInfoIncluded {
 		n.PersistentLog = append(n.PersistentLog, nhi.PlogInfo...)
 	}
-	for _, cid := range nhi.ClusterIdList {
-		n.Clusters[cid] = struct{}{}
+	for _, cid := range nhi.ShardIdList {
+		n.Shards[cid] = struct{}{}
 	}
 	return n
 }
@@ -145,16 +134,15 @@ func (m *multiNodeHost) syncNodeHostSpec(nhi pb.NodeHostInfo) {
 		if len(nhi.PlogInfo) == 0 && len(spec.PersistentLog) > 0 {
 			for _, plv := range spec.PersistentLog {
 				plog.Debugf("PersisentLog %s is lost on %s, replaced disk?",
-					logutil.DescribeNode(plv.ClusterId, plv.NodeId), nhi.RaftAddress)
+					logutil.DescribeNode(plv.ShardId, plv.ReplicaId), nhi.RaftAddress)
 			}
 		}
-		spec.PersistentLog = make([]pb.LogInfo, 0)
+		spec.PersistentLog = make([]*pb.LogInfo, 0)
 		spec.PersistentLog = append(spec.PersistentLog, nhi.PlogInfo...)
-		spec.persistentLogMap = nil
 	}
 	cm := make(map[uint64]struct{})
-	for _, cid := range nhi.ClusterIdList {
+	for _, cid := range nhi.ShardIdList {
 		cm[cid] = struct{}{}
 	}
-	spec.Clusters = cm
+	spec.Shards = cm
 }

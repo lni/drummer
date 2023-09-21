@@ -21,14 +21,16 @@ import (
 	"io"
 	"io/ioutil"
 
+	"google.golang.org/protobuf/proto"
+
 	sm "github.com/lni/dragonboat/v4/statemachine"
 	pb "github.com/lni/drummer/v3/drummerpb"
 	"github.com/lni/drummer/v3/settings"
 )
 
 const (
-	// defaultClusterID is the default cluster id assigned to DB
-	defaultClusterID = uint64(0)
+	// defaultShardID is the default shard id assigned to DB
+	defaultShardID = uint64(0)
 	// deploymentIDKey is the key for deployment id value
 	deploymentIDKey = "deployment-id"
 	// launchedKey is the key for the launched flag.
@@ -44,9 +46,9 @@ const (
 const (
 	// DBUpdated indicates DB has been successfully updated
 	DBUpdated uint64 = 0
-	// ClusterExists means DB update has been rejected as the cluster to
+	// ShardExists means DB update has been rejected as the shard to
 	// be created already exist.
-	ClusterExists uint64 = 1
+	ShardExists uint64 = 1
 	// DBBootstrapped means DB update has been rejected as the
 	// DB has been bootstrapped.
 	DBBootstrapped uint64 = 2
@@ -67,73 +69,73 @@ const (
 
 // DB is the struct used to maintain the raft-backed Drummer DB
 type DB struct {
-	ClusterID      uint64 `json:"-"`
-	NodeID         uint64 `json:"-"`
+	ShardID        uint64 `json:"-"`
+	ReplicaID      uint64 `json:"-"`
 	Version        uint64
 	Tick           uint64
 	LaunchDeadline uint64
 	Failed         bool
-	Clusters       map[uint64]*pb.Cluster
+	Shards         map[uint64]*pb.Shard
 	KVMap          map[string][]byte
-	ClusterImage   *multiCluster
+	ShardImage     *multiShard
 	NodeHostImage  *multiNodeHost
 	NodeHostInfo   map[string]pb.NodeHostInfo
-	Requests       map[string][]pb.NodeHostRequest
-	Outgoing       map[string][]pb.NodeHostRequest
+	Requests       map[string][]*pb.NodeHostRequest
+	Outgoing       map[string][]*pb.NodeHostRequest
 }
 
 type schedulerContext struct {
 	Tick          uint64
-	Clusters      map[uint64]*pb.Cluster
+	Shards        map[uint64]*pb.Shard
 	Regions       *pb.Regions
-	ClusterImage  *multiCluster
+	ShardImage    *multiShard
 	NodeHostImage *multiNodeHost
 	NodeHostInfo  map[string]pb.NodeHostInfo
 }
 
 // NewDB creates a new DB instance.
-func NewDB(clusterID uint64, nodeID uint64) sm.IStateMachine {
-	plog.Infof("drummer DB is being created, cluster id: %d, node id: %d",
-		clusterID, nodeID)
+func NewDB(shardID uint64, replicaID uint64) sm.IStateMachine {
+	plog.Infof("drummer DB is being created, shard id: %d, node id: %d",
+		shardID, replicaID)
 	d := &DB{
 		Version:       currentVersion,
-		ClusterID:     clusterID,
-		NodeID:        nodeID,
-		Clusters:      make(map[uint64]*pb.Cluster),
+		ShardID:       shardID,
+		ReplicaID:     replicaID,
+		Shards:        make(map[uint64]*pb.Shard),
 		KVMap:         make(map[string][]byte),
-		ClusterImage:  newMultiCluster(),
+		ShardImage:    newMultiShard(),
 		NodeHostImage: newMultiNodeHost(),
 		NodeHostInfo:  make(map[string]pb.NodeHostInfo),
-		Requests:      make(map[string][]pb.NodeHostRequest),
-		Outgoing:      make(map[string][]pb.NodeHostRequest),
+		Requests:      make(map[string][]*pb.NodeHostRequest),
+		Outgoing:      make(map[string][]*pb.NodeHostRequest),
 	}
 	return d
 }
 
-func (d *DB) getLaunchedClusters() map[uint64]struct{} {
-	clusters := make(map[uint64]struct{})
-	for _, c := range d.ClusterImage.Clusters {
+func (d *DB) getLaunchedShards() map[uint64]struct{} {
+	shards := make(map[uint64]struct{})
+	for _, c := range d.ShardImage.Shards {
 		count := 0
-		for _, n := range c.Nodes {
+		for _, n := range c.Replicas {
 			if n.Tick > 0 {
 				count++
 			}
 		}
-		if count == len(c.Nodes) {
-			clusters[c.ClusterID] = struct{}{}
+		if count == len(c.Replicas) {
+			shards[c.ShardID] = struct{}{}
 		}
 	}
-	return clusters
+	return shards
 }
 
-func (d *DB) onUpdatedClusterInfo() {
+func (d *DB) onUpdatedShardInfo() {
 	if d.LaunchDeadline > 0 {
-		launchedClusters := d.getLaunchedClusters()
-		if len(launchedClusters) == len(d.Clusters) {
-			plog.Infof("all clusters have been launched")
+		launchedShards := d.getLaunchedShards()
+		if len(launchedShards) == len(d.Shards) {
+			plog.Infof("all shards have been launched")
 			d.LaunchDeadline = 0
 		} else {
-			plog.Infof("waiting for more clusters to be launched")
+			plog.Infof("waiting for more shards to be launched")
 		}
 	}
 }
@@ -180,9 +182,9 @@ func (d *DB) RecoverFromSnapshot(r io.Reader, files []sm.SnapshotFile,
 	d.Version = db.Version
 	d.Failed = db.Failed
 	d.LaunchDeadline = db.LaunchDeadline
-	d.Clusters = db.Clusters
+	d.Shards = db.Shards
 	d.KVMap = db.KVMap
-	d.ClusterImage = db.ClusterImage
+	d.ShardImage = db.ShardImage
 	d.NodeHostImage = db.NodeHostImage
 	d.NodeHostInfo = db.NodeHostInfo
 	d.Requests = db.Requests
@@ -213,17 +215,17 @@ func (d *DB) GetHash() (uint64, error) {
 func (d *DB) Update(entry sm.Entry) (sm.Result, error) {
 	d.assertNotFailed()
 	var c pb.Update
-	if err := c.Unmarshal(entry.Cmd); err != nil {
+	if err := proto.Unmarshal(entry.Cmd, &c); err != nil {
 		panic(err)
 	}
-	if c.Type == pb.Update_CLUSTER {
-		return sm.Result{Value: d.applyClusterUpdate(c.Change)}, nil
+	if c.Type == pb.Update_SHARD {
+		return sm.Result{Value: d.applyShardUpdate(*c.Change)}, nil
 	} else if c.Type == pb.Update_KV {
-		return sm.Result{Value: d.applyKVUpdate(c.KvUpdate)}, nil
+		return sm.Result{Value: d.applyKVUpdate(*c.KvUpdate)}, nil
 	} else if c.Type == pb.Update_NODEHOST_INFO {
-		return sm.Result{Value: d.applyNodeHostInfoUpdate(c.NodehostInfo)}, nil
+		return sm.Result{Value: d.applyNodeHostInfoUpdate(*c.NodehostInfo)}, nil
 	} else if c.Type == pb.Update_REQUESTS {
-		return sm.Result{Value: d.applyRequestsUpdate(c.Requests)}, nil
+		return sm.Result{Value: d.applyRequestsUpdate(*c.Requests)}, nil
 	} else if c.Type == pb.Update_TICK {
 		return sm.Result{Value: d.applyTickUpdate()}, nil
 	}
@@ -241,16 +243,16 @@ func (d *DB) applyNodeHostInfoUpdate(nhi pb.NodeHostInfo) uint64 {
 	delete(d.Outgoing, nhi.RaftAddress)
 	nhi.LastTick = d.Tick
 	d.NodeHostInfo[nhi.RaftAddress] = nhi
-	d.ClusterImage.update(nhi)
+	d.ShardImage.update(nhi)
 	d.NodeHostImage.update(nhi)
-	d.NodeHostImage.syncClusterInfo(d.ClusterImage)
+	d.NodeHostImage.syncShardInfo(d.ShardImage)
 	reqs, ok := d.Requests[nhi.RaftAddress]
 	if ok {
 		count = uint64(len(reqs))
 		delete(d.Requests, nhi.RaftAddress)
 		d.Outgoing[nhi.RaftAddress] = reqs
 	}
-	d.onUpdatedClusterInfo()
+	d.onUpdatedShardInfo()
 	return count
 }
 
@@ -292,11 +294,11 @@ func (d *DB) applyRequestsUpdate(reqs pb.NodeHostRequestCollection) uint64 {
 		plog.Warningf("trying to set launch requests again, ignored")
 		return 0
 	}
-	requests := make(map[string][]pb.NodeHostRequest)
+	requests := make(map[string][]*pb.NodeHostRequest)
 	for _, r := range reqs.Requests {
 		q, ok := requests[r.RaftAddress]
 		if !ok {
-			q = make([]pb.NodeHostRequest, 0)
+			q = make([]*pb.NodeHostRequest, 0)
 		}
 		q = append(q, r)
 		requests[r.RaftAddress] = q
@@ -315,7 +317,7 @@ func (d *DB) applyKVUpdate(kv pb.KV) uint64 {
 	if len(kv.Key) == 0 || len(kv.Value) == 0 {
 		panic("key and value can not be empty")
 	}
-	mkv, err := kv.Marshal()
+	mkv, err := proto.Marshal(&kv)
 	if err != nil {
 		panic(err)
 	}
@@ -325,7 +327,7 @@ func (d *DB) applyKVUpdate(kv pb.KV) uint64 {
 		return DBKVUpdated
 	}
 	var oldRec pb.KV
-	err = oldRec.Unmarshal(data)
+	err = proto.Unmarshal(data, &oldRec)
 	if err != nil {
 		panic(err)
 	}
@@ -339,9 +341,9 @@ func (d *DB) applyKVUpdate(kv pb.KV) uint64 {
 	return DBKVRejected
 }
 
-func (d *DB) applyClusterUpdate(c pb.Change) uint64 {
+func (d *DB) applyShardUpdate(c pb.Change) uint64 {
 	if c.Type == pb.Change_CREATE {
-		return d.tryCreateCluster(c)
+		return d.tryCreateShard(c)
 	}
 	panic("unknown change type value")
 }
@@ -351,7 +353,7 @@ func (d *DB) bootstrapped() bool {
 	return ok
 }
 
-func (d *DB) tryCreateCluster(c pb.Change) uint64 {
+func (d *DB) tryCreateShard(c pb.Change) uint64 {
 	if len(c.Members) == 0 {
 		panic("DrummerChange.Members should be of size 1 at least")
 	}
@@ -359,18 +361,18 @@ func (d *DB) tryCreateCluster(c pb.Change) uint64 {
 		panic("empty app name is not allowed")
 	}
 	if d.bootstrapped() {
-		plog.Errorf("CREATE cluster is not allowed after bootstrap")
+		plog.Errorf("CREATE shard is not allowed after bootstrap")
 		return DBBootstrapped
 	}
-	if _, ok := d.Clusters[c.ClusterId]; ok {
-		return ClusterExists
+	if _, ok := d.Shards[c.ShardId]; ok {
+		return ShardExists
 	}
 	members := make([]uint64, len(c.Members))
 	copy(members, c.Members)
-	d.Clusters[c.ClusterId] = &pb.Cluster{
-		Members:   members,
-		ClusterId: c.ClusterId,
-		AppName:   c.AppName,
+	d.Shards[c.ShardId] = &pb.Shard{
+		Members: members,
+		ShardId: c.ShardId,
+		AppName: c.AppName,
 	}
 	return DBUpdated
 }
@@ -380,34 +382,34 @@ func (d *DB) Lookup(query interface{}) (interface{}, error) {
 	d.assertNotFailed()
 	key := query.([]byte)
 	var req pb.LookupRequest
-	if err := req.Unmarshal(key); err != nil {
+	if err := proto.Unmarshal(key, &req); err != nil {
 		panic(err)
 	}
-	if req.Type == pb.LookupRequest_CLUSTER {
-		return d.handleClusterLookup(req), nil
+	if req.Type == pb.LookupRequest_SHARD {
+		return d.handleShardLookup(req), nil
 	} else if req.Type == pb.LookupRequest_KV {
 		return d.handleKVLookup(req), nil
 	} else if req.Type == pb.LookupRequest_SCHEDULER_CONTEXT {
 		return d.handleSchedulerContextLookup(), nil
 	} else if req.Type == pb.LookupRequest_REQUESTS {
 		return d.handleRequestsLookup(req), nil
-	} else if req.Type == pb.LookupRequest_CLUSTER_STATES {
-		return d.handleClusterStatesLookup(req), nil
+	} else if req.Type == pb.LookupRequest_SHARD_STATES {
+		return d.handleShardStatesLookup(req), nil
 	}
 	panic("unknown request type")
 }
 
-func (d *DB) handleClusterStatesLookup(req pb.LookupRequest) []byte {
-	c := &pb.ClusterStates{}
-	for _, clusterID := range req.Stats.ClusterIdList {
-		ci, err := toClusterState(d.ClusterImage,
-			d.NodeHostImage, d.Tick, clusterID)
+func (d *DB) handleShardStatesLookup(req pb.LookupRequest) []byte {
+	c := pb.ShardStates{}
+	for _, shardID := range req.Stats.ShardIdList {
+		ci, err := toShardState(d.ShardImage,
+			d.NodeHostImage, d.Tick, shardID)
 		if err != nil {
 			return nil
 		}
 		c.Collection = append(c.Collection, ci)
 	}
-	data, err := c.Marshal()
+	data, err := proto.Marshal(&c)
 	if err != nil {
 		panic(err)
 	}
@@ -417,8 +419,8 @@ func (d *DB) handleClusterStatesLookup(req pb.LookupRequest) []byte {
 func (d *DB) handleSchedulerContextLookup() []byte {
 	resp := schedulerContext{
 		Tick:          d.Tick,
-		Clusters:      d.Clusters,
-		ClusterImage:  d.ClusterImage,
+		Shards:        d.Shards,
+		ShardImage:    d.ShardImage,
 		NodeHostImage: d.NodeHostImage,
 		NodeHostInfo:  d.NodeHostInfo,
 	}
@@ -426,11 +428,11 @@ func (d *DB) handleSchedulerContextLookup() []byte {
 	if ok {
 		var kv pb.KV
 		var regions pb.Regions
-		err := kv.Unmarshal(kvData)
+		err := proto.Unmarshal(kvData, &kv)
 		if err != nil {
 			panic(err)
 		}
-		err = regions.Unmarshal([]byte(kv.Value))
+		err = proto.Unmarshal([]byte(kv.Value), &regions)
 		if err != nil {
 			panic(err)
 		}
@@ -444,13 +446,15 @@ func (d *DB) handleSchedulerContextLookup() []byte {
 }
 
 func (d *DB) handleRequestsLookup(req pb.LookupRequest) []byte {
-	var resp pb.LookupResponse
+	resp := pb.LookupResponse{
+		Requests: &pb.NodeHostRequestCollection{},
+	}
 	resp.Code = pb.LookupResponse_OK
 	reqs, ok := d.Outgoing[req.Address]
 	if ok {
 		resp.Requests.Requests = reqs
 	}
-	data, err := resp.Marshal()
+	data, err := proto.Marshal(&resp)
 	if err != nil {
 		panic(err)
 	}
@@ -467,35 +471,35 @@ func (d *DB) handleKVLookup(req pb.LookupRequest) []byte {
 	v, ok := d.KVMap[key]
 	if ok {
 		var kv pb.KV
-		err := kv.Unmarshal(v)
+		err := proto.Unmarshal(v, &kv)
 		if err != nil {
 			panic(err)
 		}
-		resp.KvResult = kv
+		resp.KvResult = &kv
 	}
-	result, err := resp.Marshal()
+	result, err := proto.Marshal(&resp)
 	if err != nil {
 		panic(err)
 	}
 	return result
 }
 
-func (d *DB) handleClusterLookup(req pb.LookupRequest) []byte {
+func (d *DB) handleShardLookup(req pb.LookupRequest) []byte {
 	var resp pb.LookupResponse
 	resp.Code = pb.LookupResponse_OK
-	clusters := make([]*pb.Cluster, 0)
-	for _, v := range d.Clusters {
+	shards := make([]*pb.Shard, 0)
+	for _, v := range d.Shards {
 		m := make([]uint64, len(v.Members))
 		copy(m, v.Members)
-		cc := pb.Cluster{
-			ClusterId: v.ClusterId,
-			Members:   m,
-			AppName:   v.AppName,
+		cc := pb.Shard{
+			ShardId: v.ShardId,
+			Members: m,
+			AppName: v.AppName,
 		}
-		clusters = append(clusters, &cc)
+		shards = append(shards, &cc)
 	}
-	resp.Clusters = clusters
-	result, err := resp.Marshal()
+	resp.Shards = shards
+	result, err := proto.Marshal(&resp)
 	if err != nil {
 		panic(err)
 	}

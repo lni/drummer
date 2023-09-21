@@ -9,6 +9,7 @@ require (
 	github.com/lni/vfs v0.2.1-0.20220616104132-8852fd867376
 	golang.org/x/net v0.15.0
 	google.golang.org/grpc v1.38.0
+	google.golang.org/protobuf v1.26.0
 )
 
 replace github.com/lni/dragonboat/v3 => /Users/lni/src/dragonboat

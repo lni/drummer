@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+//go:build !dragonboat_monkeytest
 // +build !dragonboat_monkeytest
 
 package drummer
@@ -24,23 +25,23 @@ import (
 )
 
 func TestMultiNodeHostDeepCopy(t *testing.T) {
-	ci := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+	ci := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
 		ConfigChangeIndex: 1,
 	}
-	pl := pb.LogInfo{
-		ClusterId: 100,
-		NodeId:    200,
+	pl := &pb.LogInfo{
+		ShardId:   100,
+		ReplicaId: 200,
 	}
 	nhi := pb.NodeHostInfo{
 		RaftAddress: "a2",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci},
-		PlogInfo:    []pb.LogInfo{pl},
+		ShardInfo:   []*pb.ShardInfo{ci},
+		PlogInfo:    []*pb.LogInfo{pl},
 	}
 	mnh := newMultiNodeHost()
 	mnh.update(nhi)
@@ -55,49 +56,49 @@ func TestMultiNodeHostDeepCopy(t *testing.T) {
 }
 
 func TestMultiNodeHostCanForgetOldLogInfo(t *testing.T) {
-	ci := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+	ci := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
 		ConfigChangeIndex: 1,
 	}
-	pl := pb.LogInfo{
-		ClusterId: 100,
-		NodeId:    200,
+	pl := &pb.LogInfo{
+		ShardId:   100,
+		ReplicaId: 200,
 	}
 	nhi := pb.NodeHostInfo{
 		RaftAddress:      "a2",
 		LastTick:         100,
 		Region:           "region-1",
 		PlogInfoIncluded: true,
-		ClusterInfo:      []pb.ClusterInfo{ci},
-		PlogInfo:         []pb.LogInfo{pl},
+		ShardInfo:        []*pb.ShardInfo{ci},
+		PlogInfo:         []*pb.LogInfo{pl},
 	}
 	mnh := newMultiNodeHost()
 	mnh.update(nhi)
-	if !mnh.Nodehosts["a2"].hasLog(pl.ClusterId, pl.NodeId) {
+	if !mnh.Nodehosts["a2"].hasLog(pl.ShardId, pl.ReplicaId) {
 		t.Errorf("plog info not found")
 	}
 	// when PlogInfoIncluded flag is false
 	// update() won't update the persistentLog recorded
 	nhi.PlogInfoIncluded = false
-	nhi.PlogInfo = []pb.LogInfo{}
+	nhi.PlogInfo = []*pb.LogInfo{}
 	mnh.update(nhi)
-	if !mnh.Nodehosts["a2"].hasLog(pl.ClusterId, pl.NodeId) {
+	if !mnh.Nodehosts["a2"].hasLog(pl.ShardId, pl.ReplicaId) {
 		t.Errorf("plog info not found")
 	}
-	pl2 := pb.LogInfo{
-		ClusterId: 200,
-		NodeId:    500,
+	pl2 := &pb.LogInfo{
+		ShardId:   200,
+		ReplicaId: 500,
 	}
 	nhi.PlogInfoIncluded = true
-	nhi.PlogInfo = []pb.LogInfo{pl2}
+	nhi.PlogInfo = []*pb.LogInfo{pl2}
 	mnh.update(nhi)
-	if mnh.Nodehosts["a2"].hasLog(pl.ClusterId, pl.NodeId) {
+	if mnh.Nodehosts["a2"].hasLog(pl.ShardId, pl.ReplicaId) {
 		t.Errorf("plog info unexpected")
 	}
-	if !mnh.Nodehosts["a2"].hasLog(pl2.ClusterId, pl2.NodeId) {
+	if !mnh.Nodehosts["a2"].hasLog(pl2.ShardId, pl2.ReplicaId) {
 		t.Errorf("plog info not found")
 	}
 }

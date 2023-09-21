@@ -68,7 +68,7 @@ test-rsm:
 
 .PHONY: runtest
 runtest: $(PORCUPINE_CHECKER_BIN)
-	$(GO) test -v -tags "$(BUILD_TAGS)" -timeout 3600s -run $(TARGET)
+	$(GO) test -count=1 -v -tags "$(BUILD_TAGS)" -timeout 3600s -run $(TARGET)
 	if [ -f $(JEPSEN_FILE) ]; then \
     ./$(PORCUPINE_CHECKER_BIN) -path $(JEPSEN_FILE) -timeout 30; \
   fi

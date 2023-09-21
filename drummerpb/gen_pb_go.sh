@@ -1,3 +1,5 @@
 #!/bin/bash
 
-/usr/local/bin/protoc --proto_path=../..:../vendor:$GOPATH/src:. --gogofaster_out=plugins=grpc:. drummer.proto
+protoc --go_out=. --go-grpc_out=. --proto_path=../..:../vendor:. drummer.proto
+mv github.com/lni/drummer/drummerpb/*.go ./
+rm -rf github.com

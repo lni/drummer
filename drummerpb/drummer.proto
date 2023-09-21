@@ -6,20 +6,20 @@
 //
 //     http://www.apache.org/licenses/LICENSE-2.0
 //
-// Unless required by applicable law or agreed to in writing, software
+// Unless by applicable law or agreed to in writing, software
 // distributed under the License is distributed on an "AS IS" BASIS,
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-syntax = "proto2";
+syntax = "proto3";
 // Package drummerpb contains definition of internal structs and messages used
-// by the optional Drummer component. Your dragonboat application only needs to
+// by the Drummer component. Your dragonboat application only needs to
 // import this package when you choose to let drummer to manage your distributed
 // nodehost instances. 
 package drummerpb;
 
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+option go_package= "github.com/lni/drummer/drummerpb";
 
 //
 // DrummerDB related
@@ -31,38 +31,38 @@ message Regions {
   repeated uint64 count   = 2;
 }
 
-// Cluster is the message used to describe a defined raft cluster.
-message Cluster {
+// Shard is the message used to describe a defined raft shard.
+message Shard {
   repeated uint64 members         = 1;
-  optional uint64 cluster_id      = 2 [(gogoproto.nullable) = false];
-  optional string app_name        = 3 [(gogoproto.nullable) = false];
+  uint64 shard_id      = 2;
+  string app_name        = 3;
 }
 
-// ClusterCollection is the message used to describe a list of clusters.
-message ClusterCollection {
-  repeated Cluster clusters       = 1;
+// ShardCollection is the message used to describe a list of shards.
+message ShardCollection {
+  repeated Shard shards       = 1;
 }
 
 // KV is the message used to describe a Key-Value request. 
 message KV {
-  required string key             = 1 [(gogoproto.nullable) = false];
-  required string value           = 2 [(gogoproto.nullable) = false];
-  optional uint64 instance_id     = 3 [(gogoproto.nullable) = false];
-  optional uint64 tick            = 4 [(gogoproto.nullable) = false];
-  optional uint64 old_instance_id = 5 [(gogoproto.nullable) = false];
-  optional bool finalized         = 6 [(gogoproto.nullable) = false];
+  bytes key             = 1;
+  bytes value           = 2;
+  uint64 instance_id     = 3;
+  uint64 tick            = 4;
+  uint64 old_instance_id = 5;
+  bool finalized         = 6;
 }
 
-// Change is the message used to define new raft clusters in Drummer.
+// Change is the message used to define new raft shards in Drummer.
 message Change {
   enum Type {
     CREATE = 0;
   }
 
-  required Type type              = 1 [(gogoproto.nullable) = false];
-  required uint64 cluster_id      = 2 [(gogoproto.nullable) = false];
+  Type type              = 1;
+  uint64 shard_id      = 2;
   repeated uint64 members         = 3;
-  optional string app_name        = 4 [(gogoproto.nullable) = false];
+  string app_name        = 4;
 }
 
 // ChangeResponse is the message issued by Drummer in response to Change
@@ -70,64 +70,64 @@ message Change {
 message ChangeResponse {
   enum Code {
     OK = 0;
-    CLUSTER_NOT_FOUND = 1;
+    SHARD_NOT_FOUND = 1;
     CONFLICT_FOUND = 2;
     UNKNOWN_RETRY = 3;
-    CLUSTER_EXIST = 4;
+    SHARD_EXIST = 4;
     BOOTSTRAPPED = 5;
     REGIONS_SET = 6;
   }
 
-  required Code code              = 1 [(gogoproto.nullable) = false];
+  Code code              = 1;
 }
 
 // Update is the message used for updating DrummerDB. DrummerDB is used to
-// store raft cluster definitions and Drummer key-value pairs. 
+// store raft shard definitions and Drummer key-value pairs. 
 message Update {
   enum Type {
-    CLUSTER = 0;
+    SHARD = 0;
     KV = 1;
     TICK = 2;
     NODEHOST_INFO = 3;
     REQUESTS = 4;
   }
 
-  optional Change change          = 1 [(gogoproto.nullable) = false];
-  required Type type              = 2 [(gogoproto.nullable) = false];
-  optional KV kv_update           = 3 [(gogoproto.nullable) = false];
-  optional NodeHostInfo nodehost_info = 4 [(gogoproto.nullable) = false];
-  optional NodeHostRequestCollection requests = 5 [(gogoproto.nullable) = false]; 
+  Change change          = 1;
+  Type type              = 2;
+  KV kv_update           = 3;
+  NodeHostInfo nodehost_info = 4;
+  NodeHostRequestCollection requests = 5; 
 }
 
 // LookupRequest is the lookup request message.
 message LookupRequest {
   enum Type {
-    CLUSTER = 0;
+    SHARD = 0;
     KV = 1;
     SCHEDULER_CONTEXT = 3;
     REQUESTS = 4;
-    CLUSTER_STATES = 5;
+    SHARD_STATES = 5;
   }
 
-  required Type type              = 1 [(gogoproto.nullable) = false];
-  repeated uint64 cluster_id_list = 2;
-  optional KV kv_lookup           = 3 [(gogoproto.nullable) = false];
-  optional uint64 requests_id     = 4 [(gogoproto.nullable) = false];
-  optional string address         = 5 [(gogoproto.nullable) = false];
-  optional ClusterStateRequest stats = 6 [(gogoproto.nullable) = false];
+  Type type              = 1;
+  repeated uint64 shard_id_list   = 2;
+  KV kv_lookup           = 3;
+  uint64 requests_id     = 4;
+  string address         = 5;
+  ShardStateRequest stats = 6;
 }
 
 // LookupResponse is the lookup response message. 
 message LookupResponse {
   enum Code {
     OK = 0;
-    CLUSTER_NOT_FOUND = 1;
+    SHARD_NOT_FOUND = 1;
   }
 
-  optional Code code              = 1 [(gogoproto.nullable) = false];
-  repeated Cluster clusters       = 2; 
-  optional KV kv_result           = 3 [(gogoproto.nullable) = false];
-  optional NodeHostRequestCollection requests = 4 [(gogoproto.nullable) = false];
+  Code code              = 1;
+  repeated Shard shards           = 2; 
+  KV kv_result           = 3;
+  NodeHostRequestCollection requests = 4;
 }
 
 //
@@ -143,77 +143,77 @@ message Request {
     KILL = 3;
   }
 
-  required Type type              = 1 [(gogoproto.nullable) = false];
-  required uint64 cluster_id      = 2 [(gogoproto.nullable) = false];
+  Type type              = 1;
+  uint64 shard_id        = 2;
   repeated uint64 members         = 3;
-  optional string app_name        = 4 [(gogoproto.nullable) = false];
-  optional uint64 conf_change_id  = 5 [(gogoproto.nullable) = false];
+  string app_name        = 4;
+  uint64 conf_change_id  = 5;
 }
 
-// ClusterStateRequest is the message used to send a list of cluster id values
-// to Drummer for requesting cluster state details. 
-message ClusterStateRequest {
-  repeated uint64 cluster_id_list = 1;
+// ShardStateRequest is the message used to send a list of shard id values
+// to Drummer for requesting shard state details. 
+message ShardStateRequest {
+  repeated uint64 shard_id_list = 1;
 }
 
-// ClusterState is the message used to provide cluster state to clients. 
-message ClusterState {
+// ShardState is the message used to provide shard state to clients. 
+message ShardState {
   enum State {
     OK = 0;
     UNAVAILABLE = 1;
   }
 
-  required uint64 cluster_id          = 1 [(gogoproto.nullable) = false];
-  optional uint64 leader_node_id      = 2 [(gogoproto.nullable) = false];
-  map<uint64, string> nodes           = 3;
+  uint64 shard_id            = 1;
+  uint64 leader_replica_id   = 2;
+  map<uint64, string> replicas        = 3;
   map<uint64, string> RPCAddresses    = 4;
-  optional State state                = 5 [(gogoproto.nullable) = false];
-  optional uint64 config_change_index = 6 [(gogoproto.nullable) = false];
+  State state                = 5;
+  uint64 config_change_index = 6;
 }
 
-message ClusterInfo {
-  required uint64 cluster_id          = 1 [(gogoproto.nullable) = false];
-  required uint64 node_id             = 2 [(gogoproto.nullable) = false];
-  optional bool is_leader             = 3 [(gogoproto.nullable) = false];
-  map<uint64, string> nodes           = 4;
-  optional uint64 config_change_index = 5 [(gogoproto.nullable) = false];
-  optional bool incomplete            = 6 [(gogoproto.nullable) = false];
-  optional bool pending               = 7 [(gogoproto.nullable) = false];
+message ShardInfo {
+  uint64 shard_id            = 1;
+  uint64 replica_id          = 2;
+  bool is_leader             = 3;
+  map<uint64, string> replicas        = 4;
+  uint64 config_change_index = 5;
+  bool incomplete            = 6;
+  bool pending               = 7;
 }
 
 // LogInfo is the message used by nodehost to notify Drummer that it has 
-// raft log that belongs to the specified raft cluster. 
+// raft log that belongs to the specified raft shard. 
 message LogInfo {
-  required uint64 cluster_id          = 1 [(gogoproto.nullable) = false];
-  required uint64 node_id             = 2 [(gogoproto.nullable) = false];
+  uint64 shard_id          = 1;
+  uint64 replica_id             = 2;
 }
 
-// ClusterStates contains a list of ClusterState messages. 
-message ClusterStates {
-  repeated ClusterState collection    = 1;
+// ShardStates contains a list of ShardState messages. 
+message ShardStates {
+  repeated ShardState collection    = 1;
 }
 
 // NodeHostInfo is the message used by nodehost to report its state, including
-// managed raft clusters and local persistent logs to Drummer. 
+// managed raft shards and local persistent logs to Drummer. 
 message NodeHostInfo {
-  required string raft_address       	= 1 [(gogoproto.nullable) = false];
-  repeated ClusterInfo cluster_info  	= 2 [(gogoproto.nullable) = false];
-  repeated uint64 cluster_id_list     = 3;
-  optional uint64 last_tick           = 4 [(gogoproto.nullable) = false];
-  optional bool plog_info_included    = 5 [(gogoproto.nullable) = false];
-  repeated LogInfo plog_info         	= 6 [(gogoproto.nullable) = false];
-  optional string region              = 7 [(gogoproto.nullable) = false];
-  optional string RPCAddress          = 8 [(gogoproto.nullable) = false];
+  string raft_address       	= 1;
+  repeated ShardInfo shard_info  	= 2;
+  repeated uint64 shard_id_list     = 3;
+  uint64 last_tick           = 4;
+  bool plog_info_included    = 5;
+  repeated LogInfo plog_info         	= 6;
+  string region              = 7;
+  string RPCAddress          = 8;
 }
 
 // NodeHostCollection contains a list of NodeHostInfo messages. 
 message NodeHostCollection {
-  repeated NodeHostInfo collection    = 1 [(gogoproto.nullable) = false];
-  optional uint64 tick                = 2 [(gogoproto.nullable) = false];
+  repeated NodeHostInfo collection    = 1;
+  uint64 tick                = 2;
 }
 
 // ConfigChangeIndexList is the message used to report ConfChangeIndex values
-// of clusters.
+// of shards.
 message ConfigChangeIndexList {
   map<uint64, uint64> indexes         = 1;
 }
@@ -221,7 +221,7 @@ message ConfigChangeIndexList {
 // DeploymentInfo is a message that contains the deployment id generated by
 // Drummer. 
 message DeploymentInfo {
-  required uint64 deployment_id       = 1 [(gogoproto.nullable) = false];
+  uint64 deployment_id       = 1;
 }
 
 // Empty is a dummy message. 
@@ -233,71 +233,71 @@ message Empty {}
 
 // NodeHostRequest is the request message sent to NodeHost by Drummer.
 message NodeHostRequest {
-  optional Request change             = 1 [(gogoproto.nullable) = false];
-  repeated uint64 node_id_list        = 2;
+  Request change             = 1;
+  repeated uint64 replica_id_list     = 2;
   repeated string address_list        = 3;
-  optional uint64 instantiate_node_id = 4 [(gogoproto.nullable) = false];
-  optional string raft_address        = 5 [(gogoproto.nullable) = false];
-  optional bool join                  = 6 [(gogoproto.nullable) = false];
-  optional bool restore               = 7 [(gogoproto.nullable) = false];
-  optional string app_name            = 8 [(gogoproto.nullable) = false];
-  optional Config config              = 9 [(gogoproto.nullable) = false];
+  uint64 instantiate_replica_id = 4;
+  string raft_address        = 5;
+  bool join                  = 6;
+  bool restore               = 7;
+  string app_name            = 8;
+  Config config              = 9;
 }
 
 // NodeHostRequestCollection contains a list of NodeHostRequest messages. 
 message NodeHostRequestCollection {
-  repeated NodeHostRequest requests   = 1 [(gogoproto.nullable) = false];
+  repeated NodeHostRequest requests   = 1;
 }
 
 message DrummerConfigRequest {
-  required uint64 node_id             = 1 [(gogoproto.nullable) = false];
-  optional string address             = 2 [(gogoproto.nullable) = false];
+  uint64 replica_id             = 1;
+  string address             = 2;
 }
 
-// Config is the message used to describe configurations for raft clusters. 
+// Config is the message used to describe configurations for raft shards. 
 message Config {
-  optional uint64 ElectionRTT         = 1 [(gogoproto.nullable) = false];
-  optional uint64 HeartbeatRTT        = 2 [(gogoproto.nullable) = false];
-  optional bool CheckQuorum            = 5 [(gogoproto.nullable) = false];
-  optional uint64 CompactionOverhead   = 6 [(gogoproto.nullable) = false];
-  optional uint64 SnapshotEntries      = 7 [(gogoproto.nullable) = false];
-  optional string RaftClusterAddresses = 8 [(gogoproto.nullable) = false];
-  optional string DrummerAddress       = 9 [(gogoproto.nullable) = false];
-  optional uint64 DrummerNodeID        = 10 [(gogoproto.nullable) = false];
-  optional string DrummerNodeHostDirectory = 11 [(gogoproto.nullable) = false];
-  optional string DrummerWALDirectory  = 12 [(gogoproto.nullable) = false];
-  optional bool MutualTLS              = 13 [(gogoproto.nullable) = false];
-  optional string CAFile               = 14 [(gogoproto.nullable) = false];
-  optional string CertFile             = 15 [(gogoproto.nullable) = false];
-  optional string KeyFile              = 16 [(gogoproto.nullable) = false];
-  optional uint64 MaxInMemLogSize      = 17 [(gogoproto.nullable) = false];
+  uint64 ElectionRTT         = 1;
+  uint64 HeartbeatRTT        = 2;
+  bool CheckQuorum            = 5;
+  uint64 CompactionOverhead   = 6;
+  uint64 SnapshotEntries      = 7;
+  string RaftShardAddresses = 8;
+  string DrummerAddress       = 9;
+  uint64 DrummerNodeID        = 10;
+  string DrummerNodeHostDirectory = 11;
+  string DrummerWALDirectory  = 12;
+  bool MutualTLS              = 13;
+  string CAFile               = 14;
+  string CertFile             = 15;
+  string KeyFile              = 16;
+  uint64 MaxInMemLogSize      = 17;
 }
 
 service Drummer {
-  // AddDrummerServer adds a new server to the Drummer cluster.
+  // AddDrummerServer adds a new server to the Drummer shard.
   rpc AddDrummerServer(DrummerConfigRequest) returns (Empty) {}
-  // RemoveDrummerServer removes an existing server from the Drummer cluster. 
+  // RemoveDrummerServer removes an existing server from the Drummer shard. 
   rpc RemoveDrummerServer(DrummerConfigRequest) returns (Empty) {}
   // GetDeploymentInfo returns the DeploymentID value from Drummer. 
   rpc GetDeploymentInfo(Empty) returns (DeploymentInfo) {}
-  // GetClusterConfigChangeIndexList returns the ConfChangeIndex values of all
-  // known clusters. 
-  rpc GetClusterConfigChangeIndexList(Empty) returns (ConfigChangeIndexList) {}
+  // GetShardConfigChangeIndexList returns the ConfChangeIndex values of all
+  // known shards. 
+  rpc GetShardConfigChangeIndexList(Empty) returns (ConfigChangeIndexList) {}
   // ReportAvailableNodeHost is used by nodehost to report its state details to
   // Drummer.
   rpc ReportAvailableNodeHost(NodeHostInfo) returns (NodeHostRequestCollection) {}
   // GetNodeHostCollection returns a list of all known nodehosts from Drummer.
   rpc GetNodeHostCollection(Empty) returns (NodeHostCollection) {}
-  // GetClusters returns a list of all known clusters from Drummer.
-  rpc GetClusters(Empty) returns (ClusterCollection) {} 
+  // GetShards returns a list of all known shards from Drummer.
+  rpc GetShards(Empty) returns (ShardCollection) {} 
   // SubmitChange is used by Drummer clients to submit DrummerDB updates. 
   rpc SubmitChange(Change) returns (ChangeResponse) {}
-  // SetBootstrapped sets the Drummer as bootstrapped. No more clusters can be defined 
+  // SetBootstrapped sets the Drummer as bootstrapped. No more shards can be defined 
   // once Drummer is set as bootstrapped. Bootstrapped Drummer will start to schedule
   // raft nodes. 
   rpc SetBootstrapped(Empty) returns (ChangeResponse) {}
-  // SetRegions sets region info for defined clusters. 
+  // SetRegions sets region info for defined shards. 
   rpc SetRegions(Regions) returns (ChangeResponse) {}
-  // GetClusterStates returns ClusterStates for selected raft clusters. 
-  rpc GetClusterStates(ClusterStateRequest) returns (ClusterStates) {}
+  // GetShardStates returns ShardStates for selected raft shards. 
+  rpc GetShardStates(ShardStateRequest) returns (ShardStates) {}
 }

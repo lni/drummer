@@ -25,25 +25,26 @@ import (
 	pb "github.com/lni/drummer/v3/drummerpb"
 	"github.com/lni/drummer/v3/settings"
 	"github.com/lni/goutils/random"
+	"google.golang.org/protobuf/proto"
 )
 
-func getCluster() []*pb.Cluster {
-	c := &pb.Cluster{
-		Members:   []uint64{1, 2, 3},
-		ClusterId: 100,
-		AppName:   "noop",
+func getShard() []*pb.Shard {
+	c := &pb.Shard{
+		Members: []uint64{1, 2, 3},
+		ShardId: 100,
+		AppName: "noop",
 	}
-	return []*pb.Cluster{c}
+	return []*pb.Shard{c}
 }
 
 type testNodeInfo struct {
 	address     string
 	tick        uint64
 	region      string
-	hasCluster  bool
-	clusterID   uint64
-	nodeID      uint64
-	allNodes    []uint64
+	hasShard    bool
+	shardID     uint64
+	replicaID   uint64
+	allReplicas []uint64
 	addressList []string
 }
 
@@ -55,26 +56,26 @@ func getTestNodeHostInfo(nhi []testNodeInfo) []pb.NodeHostInfo {
 			LastTick:    n.tick,
 			Region:      n.region,
 		}
-		if n.hasCluster {
-			ci := pb.ClusterInfo{
-				ClusterId: n.clusterID,
-				NodeId:    n.nodeID,
+		if n.hasShard {
+			ci := &pb.ShardInfo{
+				ShardId:   n.shardID,
+				ReplicaId: n.replicaID,
 			}
 			nodeMap := make(map[uint64]string)
-			for idx, nid := range n.allNodes {
+			for idx, nid := range n.allReplicas {
 				nodeMap[nid] = n.addressList[idx]
 			}
-			ci.Nodes = nodeMap
-			nh.ClusterInfo = make([]pb.ClusterInfo, 0)
-			nh.ClusterInfo = append(nh.ClusterInfo, ci)
+			ci.Replicas = nodeMap
+			nh.ShardInfo = make([]*pb.ShardInfo, 0)
+			nh.ShardInfo = append(nh.ShardInfo, ci)
 		}
 		result = append(result, nh)
 	}
 	return result
 }
 
-func getTestMultiCluster(nhList []pb.NodeHostInfo) *multiCluster {
-	mc := newMultiCluster()
+func getTestMultiShard(nhList []pb.NodeHostInfo) *multiShard {
+	mc := newMultiShard()
 	for _, nh := range nhList {
 		mc.update(nh)
 	}
@@ -90,7 +91,7 @@ func getTestMultiNodeHost(nhList []pb.NodeHostInfo) *multiNodeHost {
 }
 
 // without any running cluster
-func getNodeHostInfoListWithoutAnyCluster() []pb.NodeHostInfo {
+func getNodeHostInfoListWithoutAnyShard() []pb.NodeHostInfo {
 	nhi := []testNodeInfo{
 		{"a1", 100, "region-1", false, 0, 0, nil, nil},
 		{"a2", 100, "region-2", false, 0, 0, nil, nil},
@@ -113,7 +114,7 @@ func getNodeHostInfoListWithOneRestartedNode() []pb.NodeHostInfo {
 	}
 	nh := getTestNodeHostInfo(nhi)
 	nh[2].PlogInfoIncluded = true
-	nh[2].PlogInfo = append(nh[2].PlogInfo, pb.LogInfo{ClusterId: 100, NodeId: 3})
+	nh[2].PlogInfo = append(nh[2].PlogInfo, &pb.LogInfo{ShardId: 100, ReplicaId: 3})
 	return nh
 }
 
@@ -121,7 +122,7 @@ func getNodeHostInfoListWithOneRestartedNode() []pb.NodeHostInfo {
 // with one failed node and there was cluster on that node.
 //
 
-func getNodeHostInfoListWithOneFailedCluster() []pb.NodeHostInfo {
+func getNodeHostInfoListWithOneFailedShard() []pb.NodeHostInfo {
 	nhi := []testNodeInfo{
 		{"a1", 500, "region-1", true, 100, 1, []uint64{1, 2, 3}, []string{"a1", "a2", "a3"}},
 		{"a2", 500, "region-2", true, 100, 2, []uint64{1, 2, 3}, []string{"a1", "a2", "a3"}},
@@ -135,7 +136,7 @@ func getNodeHostInfoListWithOneFailedCluster() []pb.NodeHostInfo {
 // with one added node
 //
 
-func getNodeHostInfoListWithOneAddedCluster() []pb.NodeHostInfo {
+func getNodeHostInfoListWithOneAddedShard() []pb.NodeHostInfo {
 	nhi := []testNodeInfo{
 		{"a1", 500, "region-1", true, 100, 1, []uint64{1, 2, 3, 4}, []string{"a1", "a2", "a3", "a4"}},
 		{"a2", 500, "region-2", true, 100, 2, []uint64{1, 2, 3, 4}, []string{"a1", "a2", "a3", "a4"}},
@@ -149,7 +150,7 @@ func getNodeHostInfoListWithOneAddedCluster() []pb.NodeHostInfo {
 // with one ready to be deleted
 //
 
-func getNodeHostInfoListWithOneReadyForDeleteCluster() []pb.NodeHostInfo {
+func getNodeHostInfoListWithOneReadyForDeleteShard() []pb.NodeHostInfo {
 	nhi := []testNodeInfo{
 		{"a1", 500, "region-1", true, 100, 1, []uint64{1, 2, 3, 4}, []string{"a1", "a2", "a3", "a4"}},
 		{"a2", 500, "region-2", true, 100, 2, []uint64{1, 2, 3, 4}, []string{"a1", "a2", "a3", "a4"}},
@@ -163,7 +164,7 @@ func getNodeHostInfoListWithOneReadyForDeleteCluster() []pb.NodeHostInfo {
 // Restore cluster
 //
 
-func getNodeHostListWithUnavailableCluster() []pb.NodeHostInfo {
+func getNodeHostListWithUnavailableShard() []pb.NodeHostInfo {
 	nhi := []testNodeInfo{
 		{"a1", 500, "region-1", true, 100, 1, []uint64{1, 2, 3}, []string{"a1", "a2", "a3"}},
 		{"a2", 100, "region-2", true, 100, 2, []uint64{1, 2, 3}, []string{"a1", "a2", "a3"}},
@@ -173,7 +174,7 @@ func getNodeHostListWithUnavailableCluster() []pb.NodeHostInfo {
 	return getTestNodeHostInfo(nhi)
 }
 
-func getNodeHostListWithReadyToBeRestoredCluster() []pb.NodeHostInfo {
+func getNodeHostListWithReadyToBeRestoredShard() []pb.NodeHostInfo {
 	nhi := []testNodeInfo{
 		{"a1", 500, "region-1", true, 100, 1, []uint64{1, 2, 3}, []string{"a1", "a2", "a3"}},
 		{"a2", 500, "region-2", false, 0, 0, nil, nil},
@@ -183,9 +184,9 @@ func getNodeHostListWithReadyToBeRestoredCluster() []pb.NodeHostInfo {
 	results := getTestNodeHostInfo(nhi)
 	// add LogInfo
 	results[1].PlogInfoIncluded = true
-	results[1].PlogInfo = append(results[1].PlogInfo, pb.LogInfo{ClusterId: 100, NodeId: 2})
+	results[1].PlogInfo = append(results[1].PlogInfo, &pb.LogInfo{ShardId: 100, ReplicaId: 2})
 	results[2].PlogInfoIncluded = true
-	results[2].PlogInfo = append(results[2].PlogInfo, pb.LogInfo{ClusterId: 100, NodeId: 3})
+	results[2].PlogInfo = append(results[2].PlogInfo, &pb.LogInfo{ShardId: 100, ReplicaId: 3})
 	return results
 }
 
@@ -220,15 +221,15 @@ func uint64In(val uint64, list []uint64) bool {
 }
 
 func TestSchedulerLaunchRequest(t *testing.T) {
-	config := GetClusterConfig()
+	config := GetShardConfig()
 	tick := uint64(100)
-	nhList := getNodeHostInfoListWithoutAnyCluster()
+	nhList := getNodeHostInfoListWithoutAnyShard()
 	mnh := getTestMultiNodeHost(nhList)
-	mc := getTestMultiCluster(nhList)
-	clusters := getCluster()
+	mc := getTestMultiShard(nhList)
+	shards := getShard()
 	regions := getRequestedRegion()
-	s := newSchedulerWithContext(nil, config, tick, clusters, mc, mnh)
-	reqs, err := s.getLaunchRequests(clusters, &regions)
+	s := newSchedulerWithContext(nil, config, tick, shards, mc, mnh)
+	reqs, err := s.getLaunchRequests(shards, &regions)
 	if err != nil {
 		t.Errorf("expected to get launch request, error returned: %s", err.Error())
 	}
@@ -239,14 +240,14 @@ func TestSchedulerLaunchRequest(t *testing.T) {
 		if req.Change.Type != pb.Request_CREATE {
 			t.Errorf("change type %d, want %d", req.Change.Type, pb.Request_CREATE)
 		}
-		if req.Change.ClusterId != 100 {
-			t.Errorf("cluster id %d, want 100", req.Change.ClusterId)
+		if req.Change.ShardId != 100 {
+			t.Errorf("cluster id %d, want 100", req.Change.ShardId)
 		}
 		if len(req.Change.Members) != 3 {
 			t.Errorf("len(req.Members)=%d, want 3", len(req.Change.Members))
 		}
-		if len(req.NodeIdList) != 3 {
-			t.Errorf("len(req.NodeIdList)=%d, want 3", len(req.NodeIdList))
+		if len(req.ReplicaIdList) != 3 {
+			t.Errorf("len(req.ReplicaIdList)=%d, want 3", len(req.ReplicaIdList))
 		}
 		if len(req.AddressList) != 3 {
 			t.Errorf("len(req.Address)=%d, want 3", len(req.AddressList))
@@ -254,15 +255,15 @@ func TestSchedulerLaunchRequest(t *testing.T) {
 		if !stringIn(req.RaftAddress, []string{"a1", "a2", "a3"}) {
 			t.Errorf("unexpected address selected %s", req.RaftAddress)
 		}
-		if !uint64In(req.InstantiateNodeId, []uint64{1, 2, 3}) {
-			t.Errorf("unexpected node id selected %d", req.InstantiateNodeId)
+		if !uint64In(req.InstantiateReplicaId, []uint64{1, 2, 3}) {
+			t.Errorf("unexpected node id selected %d", req.InstantiateReplicaId)
 		}
 		for _, addr := range req.AddressList {
 			if !stringIn(addr, []string{"a1", "a2", "a3"}) {
 				t.Error("unexpected to be included")
 			}
 		}
-		for _, nid := range req.NodeIdList {
+		for _, nid := range req.ReplicaIdList {
 			if !uint64In(nid, []uint64{1, 2, 3}) {
 				t.Error("unexpected to be included")
 			}
@@ -271,19 +272,19 @@ func TestSchedulerLaunchRequest(t *testing.T) {
 }
 
 func TestSchedulerAddRequestDuringRepair(t *testing.T) {
-	config := GetClusterConfig()
+	config := GetShardConfig()
 	tick := uint64(500)
-	nhList := getNodeHostInfoListWithOneFailedCluster()
+	nhList := getNodeHostInfoListWithOneFailedShard()
 	mnh := getTestMultiNodeHost(nhList)
-	mc := getTestMultiCluster(nhList)
-	mnh.syncClusterInfo(mc)
-	clusters := getCluster()
-	s := newSchedulerWithContext(nil, config, tick, clusters, mc, mnh)
-	if len(s.clustersToRepair) != 1 {
-		t.Errorf("len(s.clustersToRepair)=%d, want 1", len(s.clustersToRepair))
+	mc := getTestMultiShard(nhList)
+	mnh.syncShardInfo(mc)
+	shards := getShard()
+	s := newSchedulerWithContext(nil, config, tick, shards, mc, mnh)
+	if len(s.shardsToRepair) != 1 {
+		t.Errorf("len(s.shardsToRepair)=%d, want 1", len(s.shardsToRepair))
 	}
-	ignoreClusters := make(map[uint64]struct{})
-	reqs, err := s.repair(ignoreClusters)
+	ignoreShards := make(map[uint64]struct{})
+	reqs, err := s.repair(ignoreShards)
 	if err != nil {
 		t.Errorf("error not expected")
 	}
@@ -294,8 +295,8 @@ func TestSchedulerAddRequestDuringRepair(t *testing.T) {
 	if req.Change.Type != pb.Request_ADD {
 		t.Errorf("type %d, want %d", req.Change.Type, pb.Request_ADD)
 	}
-	if req.Change.ClusterId != 100 {
-		t.Errorf("cluster id %d, want 100", req.Change.ClusterId)
+	if req.Change.ShardId != 100 {
+		t.Errorf("cluster id %d, want 100", req.Change.ShardId)
 	}
 	if len(req.Change.Members) != 1 {
 		t.Errorf("len(req.Change.Members)=%d, want 1", len(req.Change.Members))
@@ -312,18 +313,18 @@ func TestSchedulerAddRequestDuringRepair(t *testing.T) {
 }
 
 func TestSchedulerCreateRequestDuringRepair(t *testing.T) {
-	config := GetClusterConfig()
+	config := GetShardConfig()
 	tick := uint64(500)
-	nhList := getNodeHostInfoListWithOneAddedCluster()
+	nhList := getNodeHostInfoListWithOneAddedShard()
 	mnh := getTestMultiNodeHost(nhList)
-	mc := getTestMultiCluster(nhList)
-	clusters := getCluster()
-	s := newSchedulerWithContext(nil, config, tick, clusters, mc, mnh)
-	if len(s.clustersToRepair) != 1 {
-		t.Errorf("len(s.clustersToRepair)=%d, want 1", len(s.clustersToRepair))
+	mc := getTestMultiShard(nhList)
+	shards := getShard()
+	s := newSchedulerWithContext(nil, config, tick, shards, mc, mnh)
+	if len(s.shardsToRepair) != 1 {
+		t.Errorf("len(s.shardsToRepair)=%d, want 1", len(s.shardsToRepair))
 	}
-	ignoreClusters := make(map[uint64]struct{})
-	reqs, err := s.repair(ignoreClusters)
+	ignoreShards := make(map[uint64]struct{})
+	reqs, err := s.repair(ignoreShards)
 	if err != nil {
 		t.Errorf("error not expected")
 	}
@@ -334,8 +335,8 @@ func TestSchedulerCreateRequestDuringRepair(t *testing.T) {
 	if req.Change.Type != pb.Request_CREATE {
 		t.Errorf("type %d, want %d", req.Change.Type, pb.Request_CREATE)
 	}
-	if req.Change.ClusterId != 100 {
-		t.Errorf("cluster id %d, want 100", req.Change.ClusterId)
+	if req.Change.ShardId != 100 {
+		t.Errorf("cluster id %d, want 100", req.Change.ShardId)
 	}
 	if len(req.Change.Members) != 4 {
 		t.Errorf("len(req.Change.Members)=%d, want 4", len(req.Change.Members))
@@ -348,14 +349,14 @@ func TestSchedulerCreateRequestDuringRepair(t *testing.T) {
 	if req.AppName != "noop" {
 		t.Errorf("app name %s, want noop", req.AppName)
 	}
-	if req.InstantiateNodeId != 4 {
-		t.Errorf("req.InstantiateNodeId=%d, want 4", req.InstantiateNodeId)
+	if req.InstantiateReplicaId != 4 {
+		t.Errorf("req.InstantiateReplicaId=%d, want 4", req.InstantiateReplicaId)
 	}
 	if req.RaftAddress != "a4" {
 		t.Errorf("raft address=%s, want a4", req.RaftAddress)
 	}
-	if !reflect.DeepEqual(req.NodeIdList, req.Change.Members) {
-		t.Errorf("expect req.NodeIdList == req.Change.Members")
+	if !reflect.DeepEqual(req.ReplicaIdList, req.Change.Members) {
+		t.Errorf("expect req.ReplicaIdList == req.Change.Members")
 	}
 	if len(req.AddressList) != 4 {
 		t.Errorf("len(req.AddressList)=%d, want 4", len(req.AddressList))
@@ -367,18 +368,18 @@ func TestSchedulerCreateRequestDuringRepair(t *testing.T) {
 }
 
 func TestSchedulerDeleteRequestDuringRepair(t *testing.T) {
-	config := GetClusterConfig()
+	config := GetShardConfig()
 	tick := uint64(500)
-	nhList := getNodeHostInfoListWithOneReadyForDeleteCluster()
+	nhList := getNodeHostInfoListWithOneReadyForDeleteShard()
 	mnh := getTestMultiNodeHost(nhList)
-	mc := getTestMultiCluster(nhList)
-	clusters := getCluster()
-	s := newSchedulerWithContext(nil, config, tick, clusters, mc, mnh)
-	if len(s.clustersToRepair) != 1 {
-		t.Errorf("len(s.clustersToRepair)=%d, want 1", len(s.clustersToRepair))
+	mc := getTestMultiShard(nhList)
+	shards := getShard()
+	s := newSchedulerWithContext(nil, config, tick, shards, mc, mnh)
+	if len(s.shardsToRepair) != 1 {
+		t.Errorf("len(s.shardsToRepair)=%d, want 1", len(s.shardsToRepair))
 	}
-	ignoreClusters := make(map[uint64]struct{})
-	reqs, err := s.repair(ignoreClusters)
+	ignoreShards := make(map[uint64]struct{})
+	reqs, err := s.repair(ignoreShards)
 	if err != nil {
 		t.Errorf("error not expected")
 	}
@@ -389,8 +390,8 @@ func TestSchedulerDeleteRequestDuringRepair(t *testing.T) {
 	if req.Change.Type != pb.Request_DELETE {
 		t.Errorf("type %d, want %d", req.Change.Type, pb.Request_CREATE)
 	}
-	if req.Change.ClusterId != 100 {
-		t.Errorf("cluster id %d, want 100", req.Change.ClusterId)
+	if req.Change.ShardId != 100 {
+		t.Errorf("cluster id %d, want 100", req.Change.ShardId)
 	}
 	if len(req.Change.Members) != 1 {
 		t.Errorf("len(req.Change.Members)=%d, want 1", len(req.Change.Members))
@@ -403,15 +404,15 @@ func TestSchedulerDeleteRequestDuringRepair(t *testing.T) {
 	}
 }
 
-func TestRestoreUnavailableCluster(t *testing.T) {
-	config := GetClusterConfig()
+func TestRestoreUnavailableShard(t *testing.T) {
+	config := GetShardConfig()
 	tick := uint64(500)
-	nhList := getNodeHostListWithUnavailableCluster()
-	mc := getTestMultiCluster(nhList)
-	newNhList := getNodeHostListWithReadyToBeRestoredCluster()
+	nhList := getNodeHostListWithUnavailableShard()
+	mc := getTestMultiShard(nhList)
+	newNhList := getNodeHostListWithReadyToBeRestoredShard()
 	mnh := getTestMultiNodeHost(newNhList)
-	clusters := getCluster()
-	s := newSchedulerWithContext(nil, config, tick, clusters, mc, mnh)
+	shards := getShard()
+	s := newSchedulerWithContext(nil, config, tick, shards, mc, mnh)
 	reqs, err := s.restore()
 	if err != nil {
 		t.Errorf(err.Error())
@@ -423,41 +424,41 @@ func TestRestoreUnavailableCluster(t *testing.T) {
 		if reqs[idx].Change.Type != pb.Request_CREATE {
 			t.Errorf("change type %d, want %d", reqs[idx].Change.Type, pb.Request_CREATE)
 		}
-		if reqs[idx].Change.ClusterId != 100 {
-			t.Errorf("cluster id %d, want 100", reqs[idx].Change.ClusterId)
+		if reqs[idx].Change.ShardId != 100 {
+			t.Errorf("cluster id %d, want 100", reqs[idx].Change.ShardId)
 		}
 		if len(reqs[idx].Change.Members) != 3 {
 			t.Errorf("member sz: %d, want 3", len(reqs[idx].Change.Members))
 		}
-		if reqs[idx].InstantiateNodeId != 2 && reqs[idx].InstantiateNodeId != 3 {
-			t.Errorf("new id %d, want 2 or 3", reqs[idx].InstantiateNodeId)
+		if reqs[idx].InstantiateReplicaId != 2 && reqs[idx].InstantiateReplicaId != 3 {
+			t.Errorf("new id %d, want 2 or 3", reqs[idx].InstantiateReplicaId)
 		}
 		if reqs[idx].RaftAddress != "a2" && reqs[idx].RaftAddress != "a3" {
 			t.Errorf("new address %s, want a2 or a3", reqs[idx].RaftAddress)
 		}
-		if len(reqs[idx].NodeIdList) != 3 || len(reqs[idx].AddressList) != 3 {
+		if len(reqs[idx].ReplicaIdList) != 3 || len(reqs[idx].AddressList) != 3 {
 			t.Errorf("cluster info incomplete")
 		}
 	}
 }
 
-func TestRestoreFailedCluster(t *testing.T) {
-	config := GetClusterConfig()
+func TestRestoreFailedShard(t *testing.T) {
+	config := GetShardConfig()
 	tick := uint64(500)
-	nhList := getNodeHostInfoListWithOneFailedCluster()
-	mc := getTestMultiCluster(nhList)
+	nhList := getNodeHostInfoListWithOneFailedShard()
+	mc := getTestMultiShard(nhList)
 	newNhList := getNodeHostInfoListWithOneRestartedNode()
 	mnh := getTestMultiNodeHost(newNhList)
-	clusters := getCluster()
-	s := newSchedulerWithContext(nil, config, tick, clusters, mc, mnh)
+	shards := getShard()
+	s := newSchedulerWithContext(nil, config, tick, shards, mc, mnh)
 	reqs, err := s.restore()
 	if err != nil {
 		t.Errorf(err.Error())
 	}
-	if len(s.clustersToRepair) != 1 {
+	if len(s.shardsToRepair) != 1 {
 		t.Fatalf("suppose to have one cluster need to be repaired")
 	}
-	if s.clustersToRepair[0].needToBeRestored() {
+	if s.shardsToRepair[0].needToBeRestored() {
 		t.Errorf("not suppose to be marked as needToBeRestored")
 	}
 	if len(reqs) != 1 {
@@ -466,57 +467,57 @@ func TestRestoreFailedCluster(t *testing.T) {
 	if reqs[0].Change.Type != pb.Request_CREATE {
 		t.Errorf("expected to have a CREATE request")
 	}
-	if reqs[0].Change.ClusterId != 100 {
-		t.Errorf("cluster id %d, want 100", reqs[0].Change.ClusterId)
+	if reqs[0].Change.ShardId != 100 {
+		t.Errorf("cluster id %d, want 100", reqs[0].Change.ShardId)
 	}
 	if len(reqs[0].Change.Members) != 3 {
 		t.Errorf("member sz: %d, want 3", len(reqs[0].Change.Members))
 	}
-	if reqs[0].InstantiateNodeId != 3 {
-		t.Errorf("new id %d, want 3", reqs[0].InstantiateNodeId)
+	if reqs[0].InstantiateReplicaId != 3 {
+		t.Errorf("new id %d, want 3", reqs[0].InstantiateReplicaId)
 	}
 	if reqs[0].RaftAddress != "a3" {
 		t.Errorf("new address %s, want a3", reqs[0].RaftAddress)
 	}
-	if len(reqs[0].NodeIdList) != 3 || len(reqs[0].AddressList) != 3 {
+	if len(reqs[0].ReplicaIdList) != 3 || len(reqs[0].AddressList) != 3 {
 		t.Errorf("cluster info incomplete")
 	}
 }
 
-func TestKillZombieNodes(t *testing.T) {
-	mc := newMultiCluster()
-	ci := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            2,
+func TestKillZombieReplicas(t *testing.T) {
+	mc := newMultiShard()
+	ci := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         2,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3"},
 		ConfigChangeIndex: 100,
 	}
 	nhi := pb.NodeHostInfo{
 		RaftAddress: "a2",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci},
+		ShardInfo:   []*pb.ShardInfo{ci},
 	}
 	mc.update(nhi)
-	ci2 := pb.ClusterInfo{
-		ClusterId:         1,
-		NodeId:            4,
+	ci2 := &pb.ShardInfo{
+		ShardId:           1,
+		ReplicaId:         4,
 		IsLeader:          true,
-		Nodes:             map[uint64]string{1: "a1", 2: "a2", 3: "a3", 4: "a4"},
+		Replicas:          map[uint64]string{1: "a1", 2: "a2", 3: "a3", 4: "a4"},
 		ConfigChangeIndex: 50,
 	}
 	nhi2 := pb.NodeHostInfo{
 		RaftAddress: "a4",
 		LastTick:    100,
 		Region:      "region-1",
-		ClusterInfo: []pb.ClusterInfo{ci2},
+		ShardInfo:   []*pb.ShardInfo{ci2},
 	}
 	mc.update(nhi2)
 	s := &scheduler{
-		nodesToKill: mc.getToKillNodes(),
+		replicasToKill: mc.getToKillReplicas(),
 	}
-	reqs := s.killZombieNodes()
+	reqs := s.killZombieReplicas()
 	if len(reqs) != 1 {
 		t.Fatalf("failed to generate kill zombie request")
 	}
@@ -524,8 +525,8 @@ func TestKillZombieNodes(t *testing.T) {
 	if req.Change.Type != pb.Request_KILL {
 		t.Errorf("unexpected type %s", req.Change.Type)
 	}
-	if req.Change.ClusterId != 1 {
-		t.Errorf("cluster id %d, want 1", req.Change.ClusterId)
+	if req.Change.ShardId != 1 {
+		t.Errorf("cluster id %d, want 1", req.Change.ShardId)
 	}
 	if req.Change.Members[0] != 4 {
 		t.Errorf("node id %d, want 4", req.Change.Members[0])
@@ -535,13 +536,13 @@ func TestKillZombieNodes(t *testing.T) {
 	}
 }
 
-func TestLaunchRequestsForLargeNumberOfClustersCanBeDelivered(t *testing.T) {
-	numOfClusters := 10000
-	cl := make([]*pb.Cluster, 0)
-	for i := 0; i < numOfClusters; i++ {
-		c := &pb.Cluster{
-			AppName:   random.String(32),
-			ClusterId: rand.Uint64(),
+func TestLaunchRequestsForLargeNumberOfShardsCanBeDelivered(t *testing.T) {
+	numOfShards := 10000
+	cl := make([]*pb.Shard, 0)
+	for i := 0; i < numOfShards; i++ {
+		c := &pb.Shard{
+			AppName: random.String(32),
+			ShardId: rand.Uint64(),
 			Members: []uint64{
 				rand.Uint64(),
 				rand.Uint64(),
@@ -568,30 +569,35 @@ func TestLaunchRequestsForLargeNumberOfClustersCanBeDelivered(t *testing.T) {
 			Address:    random.String(260),
 			RPCAddress: random.String(260),
 			Region:     regions.Region[i],
-			Clusters:   make(map[uint64]struct{}),
+			Shards:     make(map[uint64]struct{}),
 		}
 		nhList = append(nhList, nh)
 	}
 	s := scheduler{}
 	s.randomSrc = random.NewLockedRand()
 	s.nodeHostList = nhList
-	s.config = getDefaultClusterConfig()
+	s.config = getDefaultShardConfig()
 	reqs, err := s.getLaunchRequests(cl, &regions)
 	if err != nil {
 		t.Errorf("failed to get launch requests, %v", err)
 	}
 	for i := 0; i < 5; i++ {
 		addr := nhList[i].Address
-		selected := make([]pb.NodeHostRequest, 0)
+		selected := make([]*pb.NodeHostRequest, 0)
 		for _, req := range reqs {
-			if req.RaftAddress == addr {
-				selected = append(selected, req)
+			v := *req
+			if v.RaftAddress == addr {
+				selected = append(selected, &v)
 			}
 		}
 		rc := pb.NodeHostRequestCollection{
 			Requests: selected,
 		}
-		sz := uint64(rc.Size())
+		data, err := proto.Marshal(&rc)
+		if err != nil {
+			t.Fatalf("failed to marshal")
+		}
+		sz := uint64(len(data))
 		plog.Infof("for nodehost %d, size : %d", i, sz)
 		if sz > settings.Soft.MaxDrummerServerMsgSize ||
 			sz > settings.Soft.MaxDrummerClientMsgSize {

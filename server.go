@@ -27,6 +27,7 @@ import (
 	pb "github.com/lni/drummer/v3/drummerpb"
 	"github.com/lni/drummer/v3/settings"
 	"github.com/lni/goutils/random"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -37,6 +38,7 @@ var (
 )
 
 type server struct {
+	pb.UnimplementedDrummerServer
 	nh      *dragonboat.NodeHost
 	randSrc random.Source
 }
@@ -58,8 +60,8 @@ func (s *server) AddDrummerServer(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	rs, err := s.nh.RequestAddReplica(defaultClusterID,
-		req.NodeId, req.Address, 0, timeout)
+	rs, err := s.nh.RequestAddReplica(defaultShardID,
+		req.ReplicaId, req.Address, 0, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -72,7 +74,7 @@ func (s *server) RemoveDrummerServer(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
-	rs, err := s.nh.RequestDeleteReplica(defaultClusterID, req.NodeId, 0, timeout)
+	rs, err := s.nh.RequestDeleteReplica(defaultShardID, req.ReplicaId, 0, timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -91,14 +93,14 @@ func (s *server) GetDeploymentInfo(ctx context.Context,
 	return &di, nil
 }
 
-func (s *server) GetClusterConfigChangeIndexList(ctx context.Context,
+func (s *server) GetShardConfigChangeIndexList(ctx context.Context,
 	e *pb.Empty) (*pb.ConfigChangeIndexList, error) {
 	sc, err := s.getSchedulerContext(ctx)
 	if err != nil {
 		return nil, err
 	}
 	result := make(map[uint64]uint64)
-	for clusterID, c := range sc.ClusterImage.Clusters {
+	for clusterID, c := range sc.ShardImage.Shards {
 		result[clusterID] = c.ConfigChangeIndex
 	}
 	return &pb.ConfigChangeIndexList{Indexes: result}, nil
@@ -123,26 +125,27 @@ func (s *server) GetNodeHostCollection(ctx context.Context,
 		return nil, err
 	}
 	r := &pb.NodeHostCollection{
-		Collection: make([]pb.NodeHostInfo, 0),
+		Collection: make([]*pb.NodeHostInfo, 0),
 		Tick:       sc.Tick,
 	}
 	for _, v := range sc.NodeHostInfo {
-		r.Collection = append(r.Collection, v)
+		val := v
+		r.Collection = append(r.Collection, &val)
 	}
 	return r, nil
 }
 
-func (s *server) GetClusters(ctx context.Context,
-	e *pb.Empty) (*pb.ClusterCollection, error) {
+func (s *server) GetShards(ctx context.Context,
+	e *pb.Empty) (*pb.ShardCollection, error) {
 	req := pb.LookupRequest{
-		Type: pb.LookupRequest_CLUSTER,
+		Type: pb.LookupRequest_SHARD,
 	}
 	resp, err := s.lookupDB(ctx, req)
 	if err != nil {
 		return nil, GRPCError(err)
 	}
-	cc := pb.ClusterCollection{
-		Clusters: resp.Clusters,
+	cc := pb.ShardCollection{
+		Shards: resp.Shards,
 	}
 	return &cc, nil
 }
@@ -154,7 +157,7 @@ func (s *server) SetBootstrapped(ctx context.Context,
 
 func (s *server) SetRegions(ctx context.Context,
 	r *pb.Regions) (*pb.ChangeResponse, error) {
-	data, err := r.Marshal()
+	data, err := proto.Marshal(r)
 	if err != nil {
 		panic(err)
 	}
@@ -163,7 +166,7 @@ func (s *server) SetRegions(ctx context.Context,
 
 func (s *server) SubmitChange(ctx context.Context,
 	c *pb.Change) (*pb.ChangeResponse, error) {
-	session, err := s.getSession(ctx, defaultClusterID)
+	session, err := s.getSession(ctx, defaultShardID)
 	if err != nil {
 		return nil, err
 	}
@@ -175,8 +178,8 @@ func (s *server) SubmitChange(ctx context.Context,
 		}
 	}()
 	du := pb.Update{
-		Type:   pb.Update_CLUSTER,
-		Change: *c,
+		Type:   pb.Update_SHARD,
+		Change: c,
 	}
 	code, err := s.proposeDrummerUpdate(ctx, session, du)
 	if err != nil {
@@ -186,9 +189,9 @@ func (s *server) SubmitChange(ctx context.Context,
 		return &pb.ChangeResponse{
 			Code: pb.ChangeResponse_OK,
 		}, nil
-	} else if code.Value == ClusterExists {
+	} else if code.Value == ShardExists {
 		return &pb.ChangeResponse{
-			Code: pb.ChangeResponse_CLUSTER_EXIST,
+			Code: pb.ChangeResponse_SHARD_EXIST,
 		}, nil
 	} else if code.Value == DBBootstrapped {
 		return &pb.ChangeResponse{
@@ -198,25 +201,25 @@ func (s *server) SubmitChange(ctx context.Context,
 	panic("unknown update response")
 }
 
-func (s *server) GetClusterStates(ctx context.Context,
-	req *pb.ClusterStateRequest) (*pb.ClusterStates, error) {
+func (s *server) GetShardStates(ctx context.Context,
+	req *pb.ShardStateRequest) (*pb.ShardStates, error) {
 	r := pb.LookupRequest{
-		Type:  pb.LookupRequest_CLUSTER_STATES,
-		Stats: *req,
+		Type:  pb.LookupRequest_SHARD_STATES,
+		Stats: req,
 	}
-	data, err := r.Marshal()
+	data, err := proto.Marshal(&r)
 	if err != nil {
 		panic(err)
 	}
-	respData, err := s.nh.SyncRead(ctx, defaultClusterID, data)
+	respData, err := s.nh.SyncRead(ctx, defaultShardID, data)
 	if err != nil {
 		return nil, err
 	}
 	if len(respData.([]byte)) == 0 {
 		return nil, dragonboat.ErrShardNotFound
 	}
-	c := &pb.ClusterStates{}
-	if err := c.Unmarshal(respData.([]byte)); err != nil {
+	c := &pb.ShardStates{}
+	if err := proto.Unmarshal(respData.([]byte), c); err != nil {
 		panic(err)
 	}
 	return c, nil
@@ -246,19 +249,19 @@ func waitDrummerRequestResult(ctx context.Context,
 	panic("should never reach here")
 }
 
-func toClusterState(mc *multiCluster, mnh *multiNodeHost,
-	tick uint64, clusterID uint64) (*pb.ClusterState, error) {
-	c := mc.getClusterInfo(clusterID)
+func toShardState(mc *multiShard, mnh *multiNodeHost,
+	tick uint64, clusterID uint64) (*pb.ShardState, error) {
+	c := mc.getShardInfo(clusterID)
 	if c == nil {
 		return nil, dragonboat.ErrShardNotFound
 	}
 	nodes := make(map[uint64]string)
 	rpcAddresses := make(map[uint64]string)
-	leaderNodeID := uint64(0)
-	for _, n := range c.Nodes {
-		nodes[n.NodeID] = n.Address
+	leaderReplicaID := uint64(0)
+	for _, n := range c.Replicas {
+		nodes[n.ReplicaID] = n.Address
 		if n.IsLeader {
-			leaderNodeID = n.NodeID
+			leaderReplicaID = n.ReplicaID
 		}
 	}
 	for nid, addr := range nodes {
@@ -269,19 +272,19 @@ func toClusterState(mc *multiCluster, mnh *multiNodeHost,
 			rpcAddresses[nid] = ""
 		}
 	}
-	r := &pb.ClusterState{
-		ClusterId:         c.ClusterID,
+	r := &pb.ShardState{
+		ShardId:           c.ShardID,
 		ConfigChangeIndex: c.ConfigChangeIndex,
-		Nodes:             nodes,
+		Replicas:          nodes,
 		RPCAddresses:      rpcAddresses,
 	}
 	if !c.available(tick) {
-		r.State = pb.ClusterState_UNAVAILABLE
+		r.State = pb.ShardState_UNAVAILABLE
 	} else {
-		r.State = pb.ClusterState_OK
+		r.State = pb.ShardState_OK
 	}
-	if leaderNodeID != uint64(0) {
-		r.LeaderNodeId = leaderNodeID
+	if leaderReplicaID != uint64(0) {
+		r.LeaderReplicaId = leaderReplicaID
 	}
 	return r, nil
 }
@@ -328,7 +331,7 @@ func (s *server) setDeploymentID(ctx context.Context,
 func (s *server) getElectionInfo(ctx context.Context) (*pb.KV, error) {
 	req := pb.LookupRequest{
 		Type: pb.LookupRequest_KV,
-		KvLookup: pb.KV{
+		KvLookup: &pb.KV{
 			Key: electionKey,
 		},
 	}
@@ -336,12 +339,12 @@ func (s *server) getElectionInfo(ctx context.Context) (*pb.KV, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &resp.KvResult, nil
+	return resp.KvResult, nil
 }
 
 func (s *server) setFinalizedKV(ctx context.Context,
 	key string, value string) (*pb.ChangeResponse, error) {
-	session, err := s.getSession(ctx, defaultClusterID)
+	session, err := s.getSession(ctx, defaultShardID)
 	if err != nil {
 		return nil, err
 	}
@@ -368,7 +371,7 @@ func (s *server) makeDrummerVote(ctx context.Context,
 	session *client.Session, kv pb.KV) (uint64, error) {
 	u := pb.Update{
 		Type:     pb.Update_KV,
-		KvUpdate: kv,
+		KvUpdate: &kv,
 	}
 	v, err := s.proposeDrummerUpdate(ctx, session, u)
 	if err != nil {
@@ -389,11 +392,11 @@ func (s *server) getSchedulerContext(ctx context.Context) (*schedulerContext, er
 	req := pb.LookupRequest{
 		Type: pb.LookupRequest_SCHEDULER_CONTEXT,
 	}
-	data, err := req.Marshal()
+	data, err := proto.Marshal(&req)
 	if err != nil {
 		panic(err)
 	}
-	respData, err := s.nh.SyncRead(ctx, defaultClusterID, data)
+	respData, err := s.nh.SyncRead(ctx, defaultShardID, data)
 	if err != nil {
 		return nil, err
 	}
@@ -408,9 +411,9 @@ func (s *server) updateNodeHostInfo(ctx context.Context,
 	nhi *pb.NodeHostInfo) error {
 	update := pb.Update{
 		Type:         pb.Update_NODEHOST_INFO,
-		NodehostInfo: *nhi,
+		NodehostInfo: nhi,
 	}
-	session, err := s.getSession(ctx, defaultClusterID)
+	session, err := s.getSession(ctx, defaultShardID)
 	if err != nil {
 		return err
 	}
@@ -426,21 +429,21 @@ func (s *server) updateNodeHostInfo(ctx context.Context,
 }
 
 func (s *server) getRequests(ctx context.Context,
-	addr string) ([]pb.NodeHostRequest, error) {
+	addr string) ([]*pb.NodeHostRequest, error) {
 	resp := pb.LookupRequest{
 		Type:    pb.LookupRequest_REQUESTS,
 		Address: addr,
 	}
-	data, err := resp.Marshal()
+	data, err := proto.Marshal(&resp)
 	if err != nil {
 		panic(err)
 	}
-	result, err := s.nh.SyncRead(ctx, defaultClusterID, data)
+	result, err := s.nh.SyncRead(ctx, defaultShardID, data)
 	if err != nil {
 		return nil, err
 	}
 	var v pb.LookupResponse
-	if err = v.Unmarshal(result.([]byte)); err != nil {
+	if err = proto.Unmarshal(result.([]byte), &v); err != nil {
 		panic(err)
 	}
 	return v.Requests.Requests, nil
@@ -466,16 +469,16 @@ func (s *server) lookupDB(ctx context.Context,
 	timeout := time.Duration(raftOpTimeoutMillisecond) * time.Millisecond
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	data, err := req.Marshal()
+	data, err := proto.Marshal(&req)
 	if err != nil {
 		panic(err)
 	}
-	result, err := s.nh.SyncRead(ctx, defaultClusterID, data)
+	result, err := s.nh.SyncRead(ctx, defaultShardID, data)
 	if err != nil {
 		return nil, err
 	}
 	var v pb.LookupResponse
-	if err = v.Unmarshal(result.([]byte)); err != nil {
+	if err = proto.Unmarshal(result.([]byte), &v); err != nil {
 		panic(err)
 	}
 	return &v, nil
@@ -483,11 +486,11 @@ func (s *server) lookupDB(ctx context.Context,
 
 func (s *server) proposeDrummerUpdate(ctx context.Context,
 	session *client.Session, u pb.Update) (sm.Result, error) {
-	session.ShardIDMustMatch(defaultClusterID)
+	session.ShardIDMustMatch(defaultShardID)
 	timeout := time.Duration(raftOpTimeoutMillisecond) * time.Millisecond
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-	data, err := u.Marshal()
+	data, err := proto.Marshal(&u)
 	if err != nil {
 		panic(err)
 	}
@@ -497,8 +500,8 @@ func (s *server) proposeDrummerUpdate(ctx context.Context,
 func (s *server) proposeFinalizedKV(ctx context.Context,
 	session *client.Session, key string, value string,
 	instanceID uint64) (uint64, error) {
-	session.ShardIDMustMatch(defaultClusterID)
-	kv := pb.KV{
+	session.ShardIDMustMatch(defaultShardID)
+	kv := &pb.KV{
 		Key:        key,
 		Value:      value,
 		Finalized:  true,
@@ -522,18 +525,18 @@ func (s *server) lookupKV(ctx context.Context,
 	defer cancel()
 	req := pb.LookupRequest{
 		Type:     pb.LookupRequest_KV,
-		KvLookup: pb.KV{Key: key},
+		KvLookup: &pb.KV{Key: key},
 	}
-	data, err := req.Marshal()
+	data, err := proto.Marshal(&req)
 	if err != nil {
 		panic(err)
 	}
-	resp, err := s.nh.SyncRead(ctx, defaultClusterID, data)
+	resp, err := s.nh.SyncRead(ctx, defaultShardID, data)
 	if err != nil {
 		return nil, err
 	}
 	lookupResp := &pb.LookupResponse{}
-	if err = lookupResp.Unmarshal(resp.([]byte)); err != nil {
+	if err = proto.Unmarshal(resp.([]byte), lookupResp); err != nil {
 		panic(err)
 	}
 	return lookupResp, nil
