@@ -108,8 +108,9 @@ func (dc *DrummerClient) SendNodeHostInfo(ctx context.Context,
 	if err != nil {
 		return err
 	}
+	empty := pb.Empty{}
 	client := pb.NewDrummerClient(conn.ClientConn())
-	il, err := client.GetShardConfigChangeIndexList(ctx, nil)
+	il, err := client.GetShardConfigChangeIndexList(ctx, &empty)
 	if err != nil {
 		conn.Close()
 		return err

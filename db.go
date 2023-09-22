@@ -467,6 +467,7 @@ func (d *DB) handleKVLookup(req pb.LookupRequest) []byte {
 		panic("empty key is not allowed")
 	}
 	var resp pb.LookupResponse
+	resp.KvResult = &pb.KV{}
 	resp.Code = pb.LookupResponse_OK
 	v, ok := d.KVMap[string(key)]
 	if ok {

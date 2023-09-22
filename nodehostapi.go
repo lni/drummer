@@ -60,6 +60,13 @@ func ToPBSession(s *client.Session) *pb.Session {
 	}
 }
 
+func updatePBSession(dst *pb.Session, src *client.Session) {
+	dst.ShardID = src.ShardID
+	dst.ClientID = src.ClientID
+	dst.SeriesID = src.SeriesID
+	dst.RespondedTo = src.RespondedTo
+}
+
 // NewNodehostAPI creates a new NodehostAPI server instance.
 func NewNodehostAPI(address string, nh *dragonboat.NodeHost) *NodehostAPI {
 	stopper := syncutil.NewStopper()
@@ -133,6 +140,9 @@ func (api *NodehostAPI) GetSession(ctx context.Context,
 	}
 	if s {
 		cs, err := api.nh.SyncGetSession(ctx, req.ShardId)
+		if err != nil {
+			return nil, grpcError(err)
+		}
 		return ToPBSession(cs), grpcError(err)
 	}
 	return ToPBSession(api.nh.GetNoOPSession(req.ShardId)), nil
@@ -160,7 +170,7 @@ func (api *NodehostAPI) Propose(ctx context.Context,
 	if err != nil {
 		return nil, grpcError(err)
 	}
-	req.Session = ToPBSession(cs)
+	updatePBSession(req.Session, cs)
 	return &pb.RaftResponse{Result: v.Value}, nil
 }
 
