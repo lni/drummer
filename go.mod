@@ -12,6 +12,4 @@ require (
 	google.golang.org/protobuf v1.26.0
 )
 
-replace github.com/lni/goutils => /Users/lni/src/goutils
-
 go 1.14
